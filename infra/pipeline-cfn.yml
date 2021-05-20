@@ -2,6 +2,13 @@ Parameters:
   ApplicationName:
     Type: String
     Description: Application Name
+  GithubRepo:
+    Type: String
+    Description: Github source code repository
+  GithubRepoBranch:
+    Default: 'main'
+    Type: String
+    Description: Github source code branch
 
 Resources:
   S3Bucket:
@@ -97,6 +104,15 @@ Resources:
                 Resource:
                   - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
                   - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuildBatches
+                  - codebuild:StartBuildBatch
+                Resource: !GetAtt
+                  - BuildProject
+                  - Arn
       AssumeRolePolicyDocument:
         Statement:
           - Action: "sts:AssumeRole"
@@ -104,3 +120,27 @@ Resources:
             Principal:
               Service:
                 - codepipeline.amazonaws.com
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Join
+        - '-'
+        - - !Ref ApplicationName
+          - build-project
+      Description: A build project for !Ref ApplicationName
+      ServiceRole: !Ref BuildProjectRole
+      Artifacts:
+        Type: CODEPIPELINE
+        Packaging: ZIP
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build:
+              commands:
+                - echo "hello world"

@@ -292,3 +292,95 @@ On vérifie la bonne éxécution de la mise à jour de la stack, ainsi que la cr
 On jette un oeil au rôle IAM créé et aux policies qui lui sont attachées:
 ![](images/5.4-codepipeline-iam-role.png)
 
+### 5. Mise en place d'un projet CodeBuild
+tag de départ: `1.5-codepipeline-iam-role`
+tag d'arrivée: `1.6-codebuild-project`
+
+Dans cette partie, nous allons rajouter un projet `CodeBuild`, qui sera déclenché par `CodePipeline`.
+
+Nous commençons par le projet `CodeBuild` car un projet `CodePipeline` doit avoir au minimum 2 "stages", qui seront dans notre cas : "Source", "Build".
+Le stage "Source" a deja été anticipé par la création de la connexion `Github`, maintenant on s'occupe d'anticiper le stage "Build".
+
+Voici les mises à jour qui sont effectuées dans le template `CloudFormation`:
+
+```yaml
+Parameters:
+  [...]
+  GithubRepo:
+    Type: String
+    Description: Github source code repository
+  GithubRepoBranch:
+    Default: 'main'
+    Type: String
+    Description: Github source code branch
+
+Resources:
+  [...]
+  PipelineRole:
+    Properties:
+      Policies:
+          PolicyDocument:
+            Statement:
+              [...]
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuildBatches
+                  - codebuild:StartBuildBatch
+                Resource: !GetAtt
+                  - BuildProject
+                  - Arn
+  [...]
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Join
+        - '-'
+        - - !Ref ApplicationName
+          - build-project
+      Description: A build project for !Ref ApplicationName
+      ServiceRole: !Ref BuildProjectRole
+      Artifacts:
+        Type: CODEPIPELINE
+        Packaging: ZIP
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build:
+              commands:
+                - echo "hello world"
+
+```
+
+Nous rajoutons:
+- 2 paramètres:
+  - `GithubRepo`: le nom du repo `Github
+  - `GithubRepoBranch`: la branche à récupérer, par défaut: `main`
+- un projet `CodeBuild`
+- la permission au rôle `CodePipeline` de déclencher le projet `CodeBuild` défini just après
+
+On aurait pu définir les paramètres et l'extension des permissions du projet `CodePipeline` lors d'un futur commit, mais bon, ce qui est fait est fait, ça sera pour un futur article encore plus clean.
+
+updatons la stack `CloudFormation` via le script helper:
+```shell
+./create-all.sh my-app
+```
+
+On vérifie la bonne éxécution de la mise à jour de la stack, ainsi que la création de la nouvelle ressource:
+![](images/6.1-codebuild-project.png)
+
+On jette un oeil aux projets CodeBuild pour vérifier la création du projet:
+![](images/6.2-codebuild-project.png)
+
+On fait confiance à `CloudFormation` pour avoir mis à jour les permission IAM sur le rôle dédié à `CodePipeline`.
+
+Pour le sport, on peut vérifier l'apparition des 2 nouvelles properties:
+![](images/6.3-codebuild-project.png)
+
