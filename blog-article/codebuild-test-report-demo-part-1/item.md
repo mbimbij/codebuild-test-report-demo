@@ -100,8 +100,42 @@ Nous pouvons créer le bucket S3 via la commande suivante:
 ```shell
 ./create-all.sh my-app
 ```
+
 Vérifions la bonne éxécution création du bucket de la stack `CloudFormation`:
 ![](images/1-s3_cfn.png)
 
 Vérifions la création du bucket S3:
 ![](images/2-s3_cfn.png)
+
+### 2. Mise en place d'une connexion Github
+tag de départ: `1.2-s3-bucket`
+tag d'arrivée: `1.3-github-connection`
+
+Nous rajoutons la ressource `CloudFormation` suivante pour créer la connexion `Github`:
+
+```yaml
+GithubConnection:
+  Type: AWS::CodeStarConnections::Connection
+  Properties:
+    ConnectionName: !Ref ApplicationName
+    ProviderType: GitHub
+```
+
+updatons la stack `CloudFormation` via le script helper:
+```shell
+./create-all.sh my-app
+```
+
+On vérifie la bonne éxécution de l'update de la stack:
+![](images/3-github-connection.png)
+
+Et la présence de la connexion Github:
+![](images/3.1-github-connection.png)
+
+Les connexion github créées par `CloudFormation` ou la CLI AWS sont toujours pending et doivent être activées à la main.
+Pour autant que l'auteur le sache, il n'y a pas de moyen d'activer automatiquement une connexion (sauf bricolage avec quelque chose comme Sélénium éventuellement).
+Voir [https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-update.html](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-update.html)
+
+    A connection created through [...] AWS CloudFormation is in PENDING status by default [...]
+    You **must** use the console to update a pending connection. You cannot update a pending connection using the AWS CLI.
+

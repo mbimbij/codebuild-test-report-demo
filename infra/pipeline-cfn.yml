@@ -14,3 +14,8 @@ Resources:
           - !Ref 'AWS::AccountId'
           - !Ref ApplicationName
           - bucket-pipeline
+  GithubConnection:
+    Type: AWS::CodeStarConnections::Connection
+    Properties:
+      ConnectionName: !Ref ApplicationName
+      ProviderType: GitHub
