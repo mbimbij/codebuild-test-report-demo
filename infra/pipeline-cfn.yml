@@ -6,7 +6,6 @@ Parameters:
     Type: String
     Description: Github source code repository
   GithubRepoBranch:
-    Default: 'main'
     Type: String
     Description: Github source code branch
 
@@ -144,3 +143,44 @@ Resources:
             build:
               commands:
                 - echo "hello world"
+  Pipeline:
+    Description: Creating a deployment pipeline for !Ref ApplicationName project in AWS CodePipeline
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      RoleArn: !GetAtt
+        - PipelineRole
+        - Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref S3Bucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeStarSourceConnection
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                ConnectionArn: !Ref GithubConnection
+                FullRepositoryId: !Ref GithubRepo
+                BranchName: !Ref GithubRepoBranch
+                OutputArtifactFormat: "CODE_ZIP"
+        - Name: Build
+          Actions:
+            - Name: Build
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName:
+                  Ref: BuildProject

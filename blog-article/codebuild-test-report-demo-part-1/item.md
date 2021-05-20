@@ -384,3 +384,110 @@ On fait confiance à `CloudFormation` pour avoir mis à jour les permission IAM 
 Pour le sport, on peut vérifier l'apparition des 2 nouvelles properties:
 ![](images/6.3-codebuild-project.png)
 
+### 6. Mise en place d'un projet CodePipeline
+tag de départ: `1.6-codebuild-project`
+tag d'arrivée: `1.7-codepipeline-project`
+
+Dans cette partie, nous allons rajouter un projet `CodePipeline`, qui sera composé de 2 stages:
+- "Source", pour récupérer le code source depuis le repo `Github`
+- "Build", qui va builder le projet java. Pour cette étape cependant, nous allons juste afficher "hello world" dans la console, pour vérifier le déclenchement du projet `CodeBuild` par `CodePipeline`
+
+Ce qui se traduit par l'ajout de la ressource `CloudFormation` suivante:
+
+```yaml
+Pipeline:
+  Description: Creating a deployment pipeline for !Ref ApplicationName project in AWS CodePipeline
+  Type: 'AWS::CodePipeline::Pipeline'
+  Properties:
+    RoleArn: !GetAtt
+      - PipelineRole
+      - Arn
+    ArtifactStore:
+      Type: S3
+      Location: !Ref S3Bucket
+    Stages:
+      - Name: Source
+        Actions:
+          - Name: Source
+            ActionTypeId:
+              Category: Source
+              Owner: AWS
+              Version: 1
+              Provider: CodeStarSourceConnection
+            OutputArtifacts:
+              - Name: SourceOutput
+            Configuration:
+              ConnectionArn: !Ref GithubConnection
+              FullRepositoryId: !Ref GithubRepo
+              BranchName: !Ref GithubRepoBranch
+              OutputArtifactFormat: "CODE_ZIP"
+      - Name: Build
+        Actions:
+          - Name: Build
+            InputArtifacts:
+              - Name: SourceOutput
+            OutputArtifacts:
+              - Name: BuildOutput
+            ActionTypeId:
+              Category: Build
+              Owner: AWS
+              Version: 1
+              Provider: CodeBuild
+            Configuration:
+              ProjectName:
+                Ref: BuildProject
+```
+
+Voir [https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-codepipeline-pipeline.html](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-codepipeline-pipeline.html) pour la documentation
+
+Analysons un peu cette ressource:
+![](images/7.1-codepipeline-project.png)
+
+1. Le projet `CodePipeline` s'éxécutera avec le rôle définit dans l'étape #4
+2. Les artefacts générés par la pipeline seront stockés dans le bucket S3 défini dans l'étape #1
+3. Stage "Source"
+  - 3.1 Le stage "Source" est composé d'une seule Action, de catégorie "Source", dont le provider est `CodeStarSourceConnection`. 
+    - Voir [https://docs.aws.amazon.com/codepipeline/latest/userguide/reference-pipeline-structure.html#actions-valid-providers](https://docs.aws.amazon.com/codepipeline/latest/userguide/reference-pipeline-structure.html#actions-valid-providers) pour la liste des types d'action valides, et les différents provider pour chaque type
+  - 3.2 On donne le nom "SourceOutput" pour la sortie de l'action associé au stage "Source". Cela définira le nom d'un dossier dans le bucket S3 associé à la pipeline
+- 3.3 La configuration de l'action de type `CodeStarSourceConnection`
+    - Voir [https://docs.aws.amazon.com/codepipeline/latest/userguide/action-reference-CodestarConnectionSource.html](https://docs.aws.amazon.com/codepipeline/latest/userguide/action-reference-CodestarConnectionSource.html) pour la référence de la configuration pour les actions de type `CodeStarSourceConnection`
+
+![](images/7.2-codepipeline-project.png)
+4. Stage "Build"
+  - 4.1 L'action de build prend en entrée "SourceOutput"
+  - 4.2 L'action de build a pour sortie "BuildOutput"
+  - 4.3 L'action est de catégorie "Build" et a pour provider `CodeBuild`. Dans la configuration, on référence le projet `CodeBuild` créé dans l'étape #5
+
+updatons la stack `CloudFormation` via le script helper:
+```shell
+./create-all.sh my-app
+```
+
+On vérifie la bonne éxécution de la mise à jour de la stack, ainsi que la création de la nouvelle ressource:
+![](images/8.1-codepipeline-project.png)
+
+On vérifie la création et le statut de la pipeline dans "Developer Tools":
+![](images/8.2-codepipeline-project.png)
+
+Si le statut est en échec, cela peut venir du fait que la connexion github n'est pas activée.
+Nous l'avons fait lors de l'étape #2, mais si jamais vous avez par exemple, supprimé et recréé la stack `CloudFormation` de la pipeline vous devrez activer à nouveau la connexion et relancer une release dans la pipeline:
+![](images/3.1-github-connection.png)
+
+La pipeline devrait alors s'être éxécutée avec succès:
+![](images/8.3-codepipeline-project.png)
+
+Allons inspecter le résultat du build
+![](images/8.4-codepipeline-project.png)
+
+Vérifions la console:
+![](images/8.5-codepipeline-project.png)
+
+Nous avons bien pu logger "Hello World". Allons inspecter enfin le code source dans le bucket S3:
+![](images/8.6-codepipeline-project.png)
+
+On note les répertoires créés par `CodePipeline` et le lien avec les configurations  "InputArtifacts" et "OutputArtifacts" du template `CloudFormation` de notre pipeline.
+
+Téléchargeons le zip et inspectons son contenu:
+![](images/8.7-codepipeline-project.png)
+
+Le contenu du zip est bien le code source du projet. Félicitations, nous avons désormais une base réutilisable et assez générique, pour bootstrapper une pipeline de CI/CD.
