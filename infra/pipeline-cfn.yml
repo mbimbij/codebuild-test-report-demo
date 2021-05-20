@@ -66,3 +66,41 @@ Resources:
             Principal:
               Service:
                 - codebuild.amazonaws.com
+  PipelineRole:
+    Type: 'AWS::IAM::Role'
+    Description: IAM role for !Ref ApplicationName pipeline resource
+    Properties:
+      RoleName: !Join
+        - '-'
+        - - !Ref ApplicationName
+          - pipeline-role
+      Path: /
+      Policies:
+        - PolicyName: !Join
+            - '-'
+            - - !Ref ApplicationName
+              - pipeline-policy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref GithubConnection
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketAcl
+                  - s3:PutObjectAcl
+                  - s3:GetBucketLocation
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com

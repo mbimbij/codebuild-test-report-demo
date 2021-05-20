@@ -139,7 +139,7 @@ Voir [https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-update.
     A connection created through [...] AWS CloudFormation is in PENDING status by default [...]
     You **must** use the console to update a pending connection. You cannot update a pending connection using the AWS CLI.
 
-### 2. Mise en place d'une connexion Github
+### 3. Mise en place d'un rôle IAM pour CodeBuild
 tag de départ: `1.3-github-connection`
 tag d'arrivée: `1.4-codebuild-iam-role`
 
@@ -222,4 +222,73 @@ On vérifie la bonne éxécution de la mise à jour de la stack, ainsi que la cr
 
 On vérifie rapidement les permissions sur le rôle nouvellement créé:
 ![](images/4.4-codebuild-iam-role.png)
+
+### 4. Mise en place d'un rôle IAM pour CodePipeline
+tag de départ: `1.4-codebuild-iam-role`
+tag d'arrivée: `1.5-codepipeline-iam-role`
+
+Dans cette étape, nous créons un rôle qui sera endossé par le futur projet `CodePipeline`, ainsi que les permissions associées.
+Ce qui se traduit par la ressource `CloudFormation` suivante:
+
+```yaml
+PipelineRole:
+  Type: 'AWS::IAM::Role'
+  Description: IAM role for !Ref ApplicationName pipeline resource
+  Properties:
+    RoleName: !Join
+      - '-'
+      - - !Ref ApplicationName
+        - pipeline-role
+    Path: /
+    Policies:
+      - PolicyName: !Join
+          - '-'
+          - - !Ref ApplicationName
+            - pipeline-policy
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Action:
+                - codestar-connections:UseConnection
+              Resource: !Ref GithubConnection
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+                - s3:GetObjectVersion
+                - s3:GetBucketAcl
+                - s3:PutObjectAcl
+                - s3:GetBucketLocation
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
+                - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
+    AssumeRolePolicyDocument:
+      Statement:
+        - Action: "sts:AssumeRole"
+          Effect: Allow
+          Principal:
+            Service:
+              - codepipeline.amazonaws.com
+```
+
+Ici aussi, analysons le rôle créé:
+![](images/5.1-codepipeline-iam-role.png)
+
+1. Nous donnons au rôle la permission d'utiliser la connexion `Github` définie dans l'étape #2
+2. Nous donnons au rôle la permission de lire et écrire vers le bucket S3 défini dans l'étape #1, la pipeline *utilise* la connexion `Github`, mais c'est elle-même qui va récupérer le code source et le pousser dans le bucket s3, il n'y a pas de délégation de l'action vers un autre service
+
+![](images/5.2-codepipeline-iam-role.png)
+
+3. Nous définissons qui a le droit d'assumer le rôle, ici les services de type `CodePipeline`
+
+updatons la stack `CloudFormation` via le script helper:
+```shell
+./create-all.sh my-app
+```
+
+On vérifie la bonne éxécution de la mise à jour de la stack, ainsi que la création de la nouvelle ressource:
+![](images/5.3-codepipeline-iam-role.png)
+
+On jette un oeil au rôle IAM créé et aux policies qui lui sont attachées:
+![](images/5.4-codepipeline-iam-role.png)
 
