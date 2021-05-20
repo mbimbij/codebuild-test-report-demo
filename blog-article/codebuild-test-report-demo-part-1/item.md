@@ -22,6 +22,13 @@ Dans cette article, nous allons développer une pipeline de CI pour une applicat
   * [Etapes](#etapes)
   * [Plan de l'article](#plan-article)
 - [Implémentation avec `CloudFormation`](#implementation-cloudformation)
+  * [1. Mise en place d'un Bucket S3 pour la pipeline de CI/CD](#1.2-s3-bucket)
+  * [2. Mise en place d'une connexion Github](#1.3-github-connection)
+  * [3. Mise en place d'un rôle IAM pour CodeBuild](#1.4-codebuild-iam-role)
+  * [4. Mise en place d'un rôle IAM pour CodePipeline](#1.5-codepipeline-iam-role)
+  * [5. Mise en place d'un projet CodeBuild](#1.6-codebuild-project)
+  * [6. Mise en place d'un projet CodePipeline](#1.7-codepipeline-project)
+  * [7. Mise en place d'un projet Java avec éxécution d'un test unitaire "build time" en Junit - local](#1.8-buildtime-test-junit-execution-local)
 - [Références](#references)
 
 <small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
@@ -66,7 +73,7 @@ Dans cet article, nous allons réaliser l'étape n°1, à savoir:
 
 ### <a name="implementation-cloudformation"></a> Implémentation avec `CloudFormation`
 
-### 1. Mise en place d'un Bucket S3 pour la pipeline de CI/CD
+### <a name="1.2-s3-bucket"></a> 1. Mise en place d'un Bucket S3 pour la pipeline de CI/CD
 
 tag de départ: `1.1-initial-commit`
 tag d'arrivée: `1.2-s3-bucket`
@@ -107,7 +114,7 @@ Vérifions la bonne éxécution création du bucket de la stack `CloudFormation`
 Vérifions la création du bucket S3:
 ![](images/2-s3_cfn.png)
 
-### 2. Mise en place d'une connexion Github
+### <a name="1.3-github-connection"></a> 2. Mise en place d'une connexion Github
 tag de départ: `1.2-s3-bucket`
 tag d'arrivée: `1.3-github-connection`
 
@@ -139,7 +146,7 @@ Voir [https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-update.
     A connection created through [...] AWS CloudFormation is in PENDING status by default [...]
     You **must** use the console to update a pending connection. You cannot update a pending connection using the AWS CLI.
 
-### 3. Mise en place d'un rôle IAM pour CodeBuild
+### <a name="1.4-codebuild-iam-role"></a> 3. Mise en place d'un rôle IAM pour CodeBuild
 tag de départ: `1.3-github-connection`
 tag d'arrivée: `1.4-codebuild-iam-role`
 
@@ -223,7 +230,7 @@ On vérifie la bonne éxécution de la mise à jour de la stack, ainsi que la cr
 On vérifie rapidement les permissions sur le rôle nouvellement créé:
 ![](images/4.4-codebuild-iam-role.png)
 
-### 4. Mise en place d'un rôle IAM pour CodePipeline
+### <a name="1.5-codepipeline-iam-role"></a> 4. Mise en place d'un rôle IAM pour CodePipeline
 tag de départ: `1.4-codebuild-iam-role`
 tag d'arrivée: `1.5-codepipeline-iam-role`
 
@@ -292,7 +299,7 @@ On vérifie la bonne éxécution de la mise à jour de la stack, ainsi que la cr
 On jette un oeil au rôle IAM créé et aux policies qui lui sont attachées:
 ![](images/5.4-codepipeline-iam-role.png)
 
-### 5. Mise en place d'un projet CodeBuild
+### <a name="1.6-codebuild-project"></a> 5. Mise en place d'un projet CodeBuild
 tag de départ: `1.5-codepipeline-iam-role`
 tag d'arrivée: `1.6-codebuild-project`
 
@@ -384,7 +391,7 @@ On fait confiance à `CloudFormation` pour avoir mis à jour les permission IAM 
 Pour le sport, on peut vérifier l'apparition des 2 nouvelles properties:
 ![](images/6.3-codebuild-project.png)
 
-### 6. Mise en place d'un projet CodePipeline
+### <a name="1.7-codepipeline-project"></a> 6. Mise en place d'un projet CodePipeline
 tag de départ: `1.6-codebuild-project`
 tag d'arrivée: `1.7-codepipeline-project`
 
@@ -491,3 +498,71 @@ Téléchargeons le zip et inspectons son contenu:
 ![](images/8.7-codepipeline-project.png)
 
 Le contenu du zip est bien le code source du projet. Félicitations, nous avons désormais une base réutilisable et assez générique, pour bootstrapper une pipeline de CI/CD.
+
+### <a name="1.8-buildtime-test-junit-execution-local"></a> 7. Mise en place d'un projet Java avec éxécution d'un test unitaire "build time" en Junit - local
+tag de départ: `1.7-codepipeline-project`
+tag d'arrivée: `1.8-buildtime-test-junit-execution-local`
+
+Dans cette étape, nous créons un projet `Java` minimal, avec juste le nécessaire pour éxécuter un test unitaire:
+
+fichier `pom.xml`:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.example</groupId>
+    <artifactId>codebuild-test-report-demo</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+
+        <junit-jupiter.version>5.7.2</junit-jupiter.version>
+        <assertj.version>3.19.0</assertj.version>
+
+        <maven-surefire-failsafe-plugin.version>3.0.0-M5</maven-surefire-failsafe-plugin.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit-jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-failsafe-plugin.version}</version>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
+```
+Nous ajoutons:
+- une dépendance vers junit-5
+- une dépendance vers assertj (l'auteur effectue les assertions via cette librairie plutôt que Junit)
+- le plugin `surefire`, afin que les tests junit-5 soient lancés quand on éxécute: `mvn test`
+
+Nous pouvons ainsi lancer des tests unitaires `Junit`:
+- via l'IDE:
+![](images/9.1-buildtime-test-junit-local.png)
+  
+- via la CLI:
+![](images/9.2-buildtime-test-junit-local.png)
+  
