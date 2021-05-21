@@ -10,5 +10,4 @@ class MyClassIT {
     MyClass myClass = new MyClass();
     assertThat(myClass.integrationHello()).isEqualTo("integrationHello");
   }
-
 }

@@ -31,6 +31,8 @@ Dans cette article, nous allons développer une pipeline de CI pour une applicat
   * [7. Mise en place d'un projet Java avec éxécution d'un test unitaire "build time" en Junit - local](#1.8-buildtime-test-junit-execution-local)
   * [8. Mise en place de la couverture de test avec Jacoco - local](#1.9-buildtime-test-junit-reporting-local)
   * [9. Reporting de l'éxécution des des tests unitaires "build time" en Junit et de la couverture de tests dans la pipeline](#1.10-buildtime-test-junit-reporting-pipeline)
+  * [10. Ajout de tests unitaires (`mvn test`) en Cucumber dans la pipeline](#1.11-buildtime-unit-test-cucumber)
+  * [10. Ajout de tests unitaires (`mvn test`) en Cucumber dans la pipeline](#1.11-buildtime-unit-test-cucumber)  
 - [Références](#references)
 
 <small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
@@ -874,3 +876,83 @@ Inspectons le rapport de couverture de test:
 On peut voir que la classe couverte par le test `Cucumber` vient de faire son apparition.
 
 Parfait! Ici aussi je vous invite à supprimer un test, rajouter des classes non testés, des tests qui échouent, etc. pour jouer avec l'outil, observer la modification de la couverture de test dans le rapport
+
+### <a name="1.12-buildtime-integation-test-junit"></a> 10. Ajout de tests d'intégration "build time" (`mvn verify`) en Junit
+tag de départ: `1.10-buildtime-test-junit-reporting-pipeline`
+tag d'arrivée: `1.11-buildtime-unit-test-cucumber`
+
+#### 10.1 Exécution des tests en local
+
+Dans cette étape, nous allons rajouter des tests dits d'intégration, mais éxécutés lors du build de l'application.
+
+Typiquement des tests vérifiant que l'appli marche avec une base de données, une file de message, etc. embarqués, in-memory, ou dockerisés. 
+J'apprécie en particulier `TestContainers` pour ce genre de tests (bien que je n'ai pas encore réussi à le faire tourner dans `CodeBuild` -> pour un prochain article si j'y arrive)
+
+Nous voulons séparer ce genre de test, plus longs que les tests unitaires (entre quelques secondes, jusque parfois quelques minutes), car, au moins en TDD, on lance les tests continuellement (on a même des outils à disposition pour les lancer littéralement en continu), et attendre 20 secondes à 2 minutes, c'est pas possible. 
+
+Ainsi on souhaite séparer les tests unitaires testant des fonctionnalités "coeur", très rapides, des tests "d'intégration", plus longs.
+Mais qu'ils soient tous lancés lors de la phase de build, dans la pipeline.
+
+On utilise le plugin `failsafe` de `Maven` pour cela, et éxécuter ces tests lors de la phase `integration-test`.
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-failsafe-plugin</artifactId>
+    <version>${maven-surefire-failsafe-plugin.version}</version>
+    <executions>
+        <execution>
+            <id>build-time-integration-test</id>
+            <goals>
+                <goal>integration-test</goal>
+            </goals>
+        </execution>
+    </executions>
+</plugin>
+```
+
+Le plugin `failsafe` n'est par défaut lié à aucune phase du cycle de vie.
+Cependant le goal `integration-test` est par défaut lié au cycle de vie ... `integration-test`.
+
+Nous rajoutons aussi une méthode à la classe `MyClass`:
+```java
+public String integrationHello(){
+  return "integrationHello";
+}
+```
+
+Et une classe de test d'intégration `MyClassIT` pour tester cette méthode:
+```java
+package org.example;
+
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class MyClassIT {
+  @Test
+  void test() {
+    MyClass myClass = new MyClass();
+    assertThat(myClass.integrationHello()).isEqualTo("integrationHello");
+  }
+}
+```
+
+On vérifie que ces nouveaux tests ne se lancent pas lors d'un `mvn test`, mais se lancent lors d'un `mvn verify`
+
+`mvn test`: 
+![](images/13.1-buildtime-integration-tests-junit.png)
+Et pas de trace de `target/failsafe-report`, ni de `MyClassIT` dans `target/surefire-report`:
+![](images/13.2-buildtime-integration-tests-junit.png)
+
+`mvn verify`:
+![](images/13.3-buildtime-integration-tests-junit.png)
+On peut voir dans la console que le test d'intégration est bien éxécuté.
+Et cette fois-ci, le dossier `target/failsafe-report` est apparu, et contient le rapport de test de `MyClassIT`
+![](images/13.4-buildtime-integration-tests-junit.png)
+
+Cependant, le rapport de couverture de test ne prend pas encore en compte la couverture des tests d'intégration:
+![](images/13.5-buildtime-integration-tests-junit.png)
+
+#### 10.2 Ajout des tests d'intégration au rapport de couverture de test
+
