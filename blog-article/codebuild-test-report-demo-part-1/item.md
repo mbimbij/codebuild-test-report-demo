@@ -956,3 +956,21 @@ Cependant, le rapport de couverture de test ne prend pas encore en compte la cou
 
 #### 10.2 Ajout des tests d'intégration au rapport de couverture de test
 
+Nous modifions la configuration du plugin `Jacoco` de manière à avoir le comportement suivant:
+![](images/13.6-buildtime-integration-tests-junit.png)
+
+1. préparation de l'agent pour les tests unitaires avec stockage des résultats dans: `target/coverage-reports/jacoco-ut.exec` 
+2. génération du rapport de couverture des tests unitaires dans `target/site/jacoco-ut`
+3. préparation de l'agent pour les tests d'intégration avec stockage des résultats dans: `target/coverage-reports/jacoco-it.exec`
+4. génération du rapport de couverture des tests d'intégration dans `target/site/jacoco-it`
+5.  1) fusion des résultats de couverture des tests unitaires et des tests d'intégration dans `target/coverage-reports/aggregate.exec`
+    2) génération du rapport de couverture aggrégé dans `target/site/jacoco-aggregate
+       
+Relançons un coup de `mvn clean verify` et vérifions le rapport de couverture aggrégé:
+![](images/13.7-buildtime-integration-tests-junit.png)
+
+Cette fois-ci, `MyClass` est couverte à 100%.
+
+On ne montrera pas de capture d'écran, vous pouvez le vérifier par vous-mêmes, dans les résultats partiels, `jacoco-ut` et `jacoco-it`, on observe une couverture partielle.
+
+#### 10.2 Ajout des tests d'intégration au rapport de couverture de test
