@@ -159,6 +159,7 @@ Resources:
                 - 'target/surefire-reports/TEST*.xml'
                 - 'target/failsafe-reports/TEST*.xml'
                 - 'target/cucumber-reports/buildtime/cucumber-results.xml'
+                - 'target/cucumber-reports/buildtime/cucumber-integration-results.xml'
             CoverageReport:
               files:
                 - 'target/site/jacoco-aggregate/jacoco.xml'

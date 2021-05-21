@@ -32,7 +32,8 @@ Dans cette article, nous allons développer une pipeline de CI pour une applicat
   * [8. Mise en place de la couverture de test avec Jacoco - local](#1.9-buildtime-test-junit-reporting-local)
   * [9. Reporting de l'éxécution des des tests unitaires "build time" en Junit et de la couverture de tests dans la pipeline](#1.10-buildtime-test-junit-reporting-pipeline)
   * [10. Ajout de tests unitaires (`mvn test`) en Cucumber dans la pipeline](#1.11-buildtime-unit-test-cucumber)
-  * [10. Ajout de tests unitaires (`mvn test`) en Cucumber dans la pipeline](#1.11-buildtime-unit-test-cucumber)  
+  * [11. Ajout de tests d'intégration "build time" (`mvn verify`) en Junit](#1.12-buildtime-integation-test-junit)
+  * [12. Ajout de tests d'intégration "build time" (`mvn verify`) en Cucumber](#1.13-buildtime-integation-test-cucumber)
 - [Références](#references)
 
 <small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
@@ -77,7 +78,7 @@ Dans cet article, nous allons réaliser l'étape n°1, à savoir:
 
 ### <a name="implementation-cloudformation"></a> Implémentation avec `CloudFormation`
 
-### <a name="1.2-s3-bucket"></a> 1. Mise en place d'un Bucket S3 pour la pipeline de CI/CD
+#### <a name="1.2-s3-bucket"></a> 1. Mise en place d'un Bucket S3 pour la pipeline de CI/CD
 
 tag de départ: `1.1-initial-commit`
 tag d'arrivée: `1.2-s3-bucket`
@@ -118,7 +119,7 @@ Vérifions la bonne éxécution création du bucket de la stack `CloudFormation`
 Vérifions la création du bucket S3:
 ![](images/2-s3_cfn.png)
 
-### <a name="1.3-github-connection"></a> 2. Mise en place d'une connexion Github
+#### <a name="1.3-github-connection"></a> 2. Mise en place d'une connexion Github
 tag de départ: `1.2-s3-bucket`
 tag d'arrivée: `1.3-github-connection`
 
@@ -150,7 +151,7 @@ Voir [https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-update.
     A connection created through [...] AWS CloudFormation is in PENDING status by default [...]
     You **must** use the console to update a pending connection. You cannot update a pending connection using the AWS CLI.
 
-### <a name="1.4-codebuild-iam-role"></a> 3. Mise en place d'un rôle IAM pour CodeBuild
+#### <a name="1.4-codebuild-iam-role"></a> 3. Mise en place d'un rôle IAM pour CodeBuild
 tag de départ: `1.3-github-connection`
 tag d'arrivée: `1.4-codebuild-iam-role`
 
@@ -234,7 +235,7 @@ On vérifie la bonne éxécution de la mise à jour de la stack, ainsi que la cr
 On vérifie rapidement les permissions sur le rôle nouvellement créé:
 ![](images/4.4-codebuild-iam-role.png)
 
-### <a name="1.5-codepipeline-iam-role"></a> 4. Mise en place d'un rôle IAM pour CodePipeline
+#### <a name="1.5-codepipeline-iam-role"></a> 4. Mise en place d'un rôle IAM pour CodePipeline
 tag de départ: `1.4-codebuild-iam-role`
 tag d'arrivée: `1.5-codepipeline-iam-role`
 
@@ -303,7 +304,7 @@ On vérifie la bonne éxécution de la mise à jour de la stack, ainsi que la cr
 On jette un oeil au rôle IAM créé et aux policies qui lui sont attachées:
 ![](images/5.4-codepipeline-iam-role.png)
 
-### <a name="1.6-codebuild-project"></a> 5. Mise en place d'un projet CodeBuild
+#### <a name="1.6-codebuild-project"></a> 5. Mise en place d'un projet CodeBuild
 tag de départ: `1.5-codepipeline-iam-role`
 tag d'arrivée: `1.6-codebuild-project`
 
@@ -395,7 +396,7 @@ On fait confiance à `CloudFormation` pour avoir mis à jour les permission IAM 
 Pour le sport, on peut vérifier l'apparition des 2 nouvelles properties:
 ![](images/6.3-codebuild-project.png)
 
-### <a name="1.7-codepipeline-project"></a> 6. Mise en place d'un projet CodePipeline
+#### <a name="1.7-codepipeline-project"></a> 6. Mise en place d'un projet CodePipeline
 tag de départ: `1.6-codebuild-project`
 tag d'arrivée: `1.7-codepipeline-project`
 
@@ -503,7 +504,7 @@ Téléchargeons le zip et inspectons son contenu:
 
 Le contenu du zip est bien le code source du projet. Félicitations, nous avons désormais une base réutilisable et assez générique, pour bootstrapper une pipeline de CI/CD.
 
-### <a name="1.8-buildtime-test-junit-execution-local"></a> 7. Mise en place d'un projet Java avec éxécution d'un test unitaire "build time" en Junit - local
+#### <a name="1.8-buildtime-test-junit-execution-local"></a> 7. Mise en place d'un projet Java avec éxécution d'un test unitaire "build time" en Junit - local
 tag de départ: `1.7-codepipeline-project`
 tag d'arrivée: `1.8-buildtime-test-junit-execution-local`
 
@@ -570,7 +571,7 @@ Nous pouvons ainsi lancer des tests unitaires `Junit`:
 - via la CLI:
 ![](images/9.2-buildtime-test-junit-local.png)
 
-### <a name="1.9-buildtime-test-junit-reporting-local"></a> 8. Mise en place de la couverture de test avec Jacoco - local
+#### <a name="1.9-buildtime-test-junit-reporting-local"></a> 8. Mise en place de la couverture de test avec Jacoco - local
 tag de départ: `1.8-buildtime-test-junit-execution-local`
 tag d'arrivée: `1.9-buildtime-test-junit-reporting-local`
 
@@ -640,7 +641,7 @@ Voici un ensemble de références intéressantes pour `Jacoco`, sur la configura
 - [https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html#Lifecycle_Reference](https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html#Lifecycle_Reference)
 - [https://maven.apache.org/guides/mini/guide-configuring-plugins.html](https://maven.apache.org/guides/mini/guide-configuring-plugins.html)
 
-### <a name="1.10-buildtime-test-junit-reporting-pipeline"></a> 9. Reporting de l'éxécution des des tests unitaires "build time" en Junit et de la couverture de tests dans la pipeline
+#### <a name="1.10-buildtime-test-junit-reporting-pipeline"></a> 9. Reporting de l'éxécution des des tests unitaires "build time" en Junit et de la couverture de tests dans la pipeline
 tag de départ: `1.9-buildtime-test-junit-reporting-local`
 tag d'arrivée: `1.10-buildtime-test-junit-reporting-pipeline`
 
@@ -718,7 +719,7 @@ Et le détail du rapport de couverture:
 Parfait !
 Je vous invite à retirer un test, ou encore rajouter une classe non testée, pour vérifier que le rapport est bien modifié.
 
-### <a name="1.11-buildtime-unit-test-cucumber"></a> 10. Ajout de tests unitaires (`mvn test`) en Cucumber dans la pipeline
+#### <a name="1.11-buildtime-unit-test-cucumber"></a> 10. Ajout de tests unitaires (`mvn test`) en Cucumber dans la pipeline
 tag de départ: `1.10-buildtime-test-junit-reporting-pipeline`
 tag d'arrivée: `1.11-buildtime-unit-test-cucumber`
 
@@ -738,7 +739,7 @@ Par contre, commencer en Junit pur,et substituer des tests unitaires ayant possi
 
 Ou alors p-e écrire ces tests Cucumber plus rapidement, soit à force d'en faire, soit avec une méthode ou des outils qui accélèreraient leur écriture (méthodes et outils que je ne connais pas à ce jour)
 
-#### 1. Ecriture du test et éxécution en local
+##### 10.1 Ecriture du test et éxécution en local
 
 Nous ajoutons les dépendances `Maven` suivantes (fichier `pom.xml`):
 
@@ -854,7 +855,7 @@ En ligne de commande:
 Inspectons les rapports de couverture de test en local
 ![](images/12.3.1-buildtime-unit-tests-cucumber.png)
 
-#### 2. Rapport de l'éxécution et de la couverture de test dans la pipeline  
+##### 10.2 Rapport de l'éxécution et de la couverture de test dans la pipeline  
 
 Nous modifions le buildspec dans `pipeline-cfn.yml`:
 ![](images/12.4-buildtime-unit-tests-cucumber.png)
@@ -877,11 +878,11 @@ On peut voir que la classe couverte par le test `Cucumber` vient de faire son ap
 
 Parfait! Ici aussi je vous invite à supprimer un test, rajouter des classes non testés, des tests qui échouent, etc. pour jouer avec l'outil, observer la modification de la couverture de test dans le rapport
 
-### <a name="1.12-buildtime-integation-test-junit"></a> 10. Ajout de tests d'intégration "build time" (`mvn verify`) en Junit
-tag de départ: `1.10-buildtime-test-junit-reporting-pipeline`
-tag d'arrivée: `1.11-buildtime-unit-test-cucumber`
+#### <a name="1.12-buildtime-integation-test-junit"></a> 11. Ajout de tests d'intégration "build time" (`mvn verify`) en Junit
+tag de départ: `1.11-buildtime-unit-test-cucumber`
+tag d'arrivée: `1.12-buildtime-integation-test-junit`
 
-#### 10.1 Exécution des tests en local
+##### 11.1 Exécution des tests en local
 
 Dans cette étape, nous allons rajouter des tests dits d'intégration, mais éxécutés lors du build de l'application.
 
@@ -954,7 +955,7 @@ Et cette fois-ci, le dossier `target/failsafe-report` est apparu, et contient le
 Cependant, le rapport de couverture de test ne prend pas encore en compte la couverture des tests d'intégration:
 ![](images/13.5-buildtime-integration-tests-junit.png)
 
-#### 10.2 Ajout des tests d'intégration au rapport de couverture de test
+##### 11.2 Ajout des tests d'intégration au rapport de couverture de test
 
 Nous modifions la configuration du plugin `Jacoco` de manière à avoir le comportement suivant:
 ![](images/13.6-buildtime-integration-tests-junit.png)
@@ -973,7 +974,7 @@ Cette fois-ci, `MyClass` est couverte à 100%.
 
 On ne montrera pas de capture d'écran, vous pouvez le vérifier par vous-mêmes, dans les résultats partiels, `jacoco-ut` et `jacoco-it`, on observe une couverture partielle.
 
-#### 10.3 Mise à jour des rapports d'éxécution et de couverture dans la pipeline
+##### 11.3 Mise à jour des rapports d'éxécution et de couverture dans la pipeline
 
 ![](images/13.8-buildtime-integration-tests-junit.png)
 Pour cela rien de plus simple, dans le `buildspec` du template de la pipeline:
@@ -986,3 +987,154 @@ Poussons le code et vérifions les rapports de test générés:
 ./create-all.sh my-app
 ```
 
+#### <a name="1.13-buildtime-integation-test-cucumber"></a> 12. Ajout de tests d'intégration "build time" (`mvn verify`) en Cucumber
+tag de départ: `1.12-buildtime-integation-test-junit`
+tag d'arrivée: `1.13-buildtime-integation-test-cucumber`
+
+Dans cette étape, nous rajoutons un test d'intégration "build time", mais en cucumber cette fois-ci.
+
+
+Pour réaliser cela, nous allons:
+1. Créer une classe de prod, destinée au test d'intégration Cucumber : `src/main/java/org/example/MyClassCucumberIT`
+2. Un scenario de test Cucumber: `src/test/resources/features/buildtime/test-integration.feature`
+3. Rajouter des tags aux scenarios des tests unitaires et des tests d'intégration
+  - On aurait pu les mettre dans des répertoires séparés, ça aurait pu être plus propre et moins source d'erreur (oups le tag oublié), mais bon, après facilement plus de 20h sur ce side-projet (écrire un article, surtout celui-là, c'est long), j'ai juste envie de passer à autre chose ^^. Et en entreprise, c'est quelque chose que je refacto facilement quelques jours ou semaines après.   
+4. Un runner Java / Cucumber pour lancer les tests d'intégration via `mvn verify`: `src/test/java/org/example/CucumberRunnerIT`
+5. Une classe pour implémenter les steps du scenario de test: `src/test/java/org/example/CucumberStepDefinitionsIT`
+6. Modifier le buildspec dans le template `CloudFormation` de la pipeline afin de:
+  - intégrer les rapports de test Cucumber
+  - supprimer les doublons de rapports de test (générés par `failsafe` et par Cucumber)
+
+Voici la nouvelle classe de prod:
+
+```java
+package org.example;
+
+public class MyClassCucumberIT {
+  public String helloCucumberIT(){
+    return "helloCucumberIT";
+  }
+}
+```
+
+Voici le scenario des tests d'intégration `Cucumber`:
+```gherkin
+@integrationTest
+Feature: build time integration feature
+  Scenario: build time integration test scenario
+    When we call `MyClassCucumberIT.helloCucumberIT` method
+    Then the `MyClassCucumberIT.helloCucumberIT` response is "helloCucumberIT"
+```
+
+La modification du scenario des tests unitaires `Cucumber`:
+```gherkin
+@integrationTest
+Feature: build time integration feature
+  Scenario: build time integration test scenario
+    When we call `MyClassCucumberIT.helloCucumberIT` method
+    Then the `MyClassCucumberIT.helloCucumberIT` response is "helloCucumberIT"
+```
+
+Voici le runner Java pour les tests d'intégration:
+
+```java
+package org.example;
+
+import io.cucumber.junit.Cucumber;
+import io.cucumber.junit.CucumberOptions;
+import org.junit.runner.RunWith;
+
+@RunWith(Cucumber.class)
+@CucumberOptions(
+    plugin = {
+        "pretty",
+        "junit:target/cucumber-reports/buildtime/cucumber-integration-results.xml",
+        "usage:target/cucumber-reports/buildtime/cucumber-integration-usage.json"},
+    glue = {"org.example"},
+    tags = "@integrationTest",
+    features = "src/test/resources/features/buildtime")
+public class CucumberRunnerIT {
+}
+```
+
+le runner java modifié pour les tests unitaires:
+```java
+@RunWith(Cucumber.class)
+@CucumberOptions(
+    plugin = {
+        "pretty",
+        "junit:target/cucumber-reports/buildtime/cucumber-results.xml",
+        "usage:target/cucumber-reports/buildtime/cucumber-usage.json"},
+    glue = {"org.example"},
+    tags = "@unitTest",
+    features = "src/test/resources/features/buildtime")
+public class CucumberRunnerTest {
+}
+```
+
+La classe d'implémentation des steps des tests d'intégration:
+```java
+package org.example;
+
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.When;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+public class CucumberStepDefinitionsIT {
+
+  private String holaResponse;
+
+  @When("we call `MyClassCucumberIT.helloCucumberIT` method")
+  public void whenWeCallOtherClassHola() {
+    holaResponse = new MyClassCucumberIT().helloCucumberIT();
+  }
+
+  @Then("the `MyClassCucumberIT.helloCucumberIT` response is {string}")
+  public void theResponseIs(String expectedResponse) {
+    assertThat(holaResponse).isEqualTo(expectedResponse);
+  }
+}
+```
+
+la modification du buildspec:
+![](images/14.1-buildtime-integration-tests-cucumber.png)
+1. On supprime les rapports failsafe faisant référence à Cucumber
+2. On rajoute les rapports générés par Cucumber, plus lisibles et mieux formattés
+
+Mettons à jour la pipeline:
+```shell
+./create-all.sh my-app
+```
+
+Redéclenchons la pipeline et inspectons les rapports de test:
+- éxécution des tests:
+  ![](images/14.2-buildtime-integration-tests-cucumber.png)
+
+- couverture de test:
+  ![](images/14.3-buildtime-integration-tests-cucumber.png)
+  
+
+Très bien. 
+Après tous ces efforts, nous avons une pipeline qui :
+
+- lance des tests unitaires:
+  - en Junit
+  - en Cucumber
+- lance des tests d'intégration
+  - en Junit
+  - en Cucumber
+- génère un rapport d'éxécution et de couverture de tous ces tests
+
+Prochaine étape dans cette aventure: exposer un endpoint REST et déployer notre application Java dans une instance EC2, puis dans un auto-scaling group derrière un Load Balancer.
+
+À bientôt.
+
+## <a name="references"></a> Références
+- code source github: [https://github.com/mbimbij/codebuild-test-report-demo](https://github.com/mbimbij/codebuild-test-report-demo)
+- [https://www.eclemma.org/jacoco/trunk/doc/maven.html ](https://www.eclemma.org/jacoco/trunk/doc/maven.html )
+- [https://www.eclemma.org/jacoco/trunk/doc/prepare-agent-mojo.html](https://www.eclemma.org/jacoco/trunk/doc/prepare-agent-mojo.html)
+- [https://www.eclemma.org/jacoco/trunk/doc/report-mojo.html](https://www.eclemma.org/jacoco/trunk/doc/report-mojo.html)
+- [https://www.baeldung.com/jacoco](https://www.baeldung.com/jacoco)
+- [https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html#Lifecycle_Reference](https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html#Lifecycle_Reference)
+- [https://maven.apache.org/guides/mini/guide-configuring-plugins.html](https://maven.apache.org/guides/mini/guide-configuring-plugins.html)
