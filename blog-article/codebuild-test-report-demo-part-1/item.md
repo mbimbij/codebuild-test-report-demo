@@ -565,4 +565,73 @@ Nous pouvons ainsi lancer des tests unitaires `Junit`:
   
 - via la CLI:
 ![](images/9.2-buildtime-test-junit-local.png)
-  
+
+### <a name="1.9-buildtime-test-junit-reporting-local"></a> 8. Mise en place de la couverture de test avec Jacoco - local
+tag de départ: `1.8-buildtime-test-junit-execution-local`
+tag d'arrivée: `1.9-buildtime-test-junit-reporting-local`
+
+Dans cette étape, nous allons rajouter le reporting de couverture de test: 
+
+Pour cela nous effectuons les actions suivantes: 
+- rajouter un plugin `Maven` du nom de `Jacoco` ("JAva COde COverage")
+- rajouter une classe de prod (dans `src/main/java`) avec une méthode quelconque, et couvrir cette méthode par un test. Sans classe de prod, le rapport de couverture est vide
+
+rajouts dans le `pom.xml`:
+```xml
+
+<properties>
+    [...]
+    <jacoco.version>0.8.7</jacoco.version>
+</properties>
+
+<build>
+    <plugins>
+        [...]
+        <plugin>
+            <groupId>org.jacoco</groupId>
+            <artifactId>jacoco-maven-plugin</artifactId>
+            <version>${jacoco.version}</version>
+            <executions>
+                <execution>
+                    <id>jacoco-prepare-agent</id>
+                    <goals>
+                        <goal>prepare-agent</goal>
+                    </goals>
+                </execution>
+                <execution>
+                    <id>jacoco-coverage-report</id>
+                    <phase>test</phase>
+                    <goals>
+                        <goal>report</goal>
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
+    </plugins>
+</build>
+```
+
+Analysons un peu la configuration de ce plugin:
+![](images/10.1-buildtime-test-junit-reporting-local.png)
+
+1. On définit une éxécution pour "préparer l'agent jacoco"
+  - 1.1 On donne l'id "jacoco-prepare-agent", ce qui apparaitra aussi dans les logs. Autrement, l'id est "default", et on ne peut avoir avoir 2 éxécutions avec le même id
+  - 1.2 On éxécute le goal `prepare-agent` du plugin. Ce goal est par défaut bindé à la phase `initialize` du lifecycle `default` de `Maven`
+2. On définit une éxécution pour créer le rapport de couverture
+  - 2.1 On donne l'id "jacoco-coverage-report" à cette éxécution
+  - 2.2 On éxécute le goal `report` du plugin. On redéfinit le binding de ce goal à la phase `test` du lifecycle de `Maven` car par défaut il est bindé à la phase `verify`, et on voulait pouvoir avoir les rapport d'éxécution des tests unitaires lors d'un `mvn test`. Même si concrètement, le binding par défaut est très bien, on n'a pas vraiment de cas où l'on souhaite les rapports de couverture de test sans avoir le `.jar`, mais bon.
+
+Après avoir éxécuté `mvn clean test`, les rapports de couverture sont disponibles dans `target/site/jacoco/`, sous différents formats.
+
+Jetons un oeil au `.html` généré:
+
+![](images/10.2-buildtime-test-junit-reporting-local.png)
+
+
+Voici un ensemble de références intéressantes pour `Jacoco`, sur la configuration de plugins `Maven`, ou encore sur les cycles de vie de ce dernier, et les différences entre cycle de vie, phase et goal:
+- [https://www.eclemma.org/jacoco/trunk/doc/maven.html ](https://www.eclemma.org/jacoco/trunk/doc/maven.html )
+- [https://www.eclemma.org/jacoco/trunk/doc/prepare-agent-mojo.html](https://www.eclemma.org/jacoco/trunk/doc/prepare-agent-mojo.html)
+- [https://www.eclemma.org/jacoco/trunk/doc/report-mojo.html](https://www.eclemma.org/jacoco/trunk/doc/report-mojo.html)
+- [https://www.baeldung.com/jacoco](https://www.baeldung.com/jacoco)
+- [https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html#Lifecycle_Reference](https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html#Lifecycle_Reference)
+- [https://maven.apache.org/guides/mini/guide-configuring-plugins.html](https://maven.apache.org/guides/mini/guide-configuring-plugins.html)

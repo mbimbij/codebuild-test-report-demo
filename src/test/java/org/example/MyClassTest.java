@@ -4,10 +4,11 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-public class MyTest {
+class MyClassTest {
   @Test
   void test() {
-    assertThat(true).isTrue();
+    MyClass myClass = new MyClass();
+    assertThat(myClass.hello()).isEqualTo("hello");
   }
 
 }
