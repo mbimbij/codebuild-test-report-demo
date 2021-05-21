@@ -716,3 +716,161 @@ Et le détail du rapport de couverture:
 Parfait !
 Je vous invite à retirer un test, ou encore rajouter une classe non testée, pour vérifier que le rapport est bien modifié.
 
+### <a name="1.11-buildtime-unit-test-cucumber"></a> 10. Ajout de tests unitaires (`mvn test`) en Cucumber dans la pipeline
+tag de départ: `1.10-buildtime-test-junit-reporting-pipeline`
+tag d'arrivée: `1.11-buildtime-unit-test-cucumber`
+
+Dans cette étape, nous allons créer un test unitaire en utilisant `Cucumber`, mais éxécuté lors de la phase `test̀` du cycle de vie de Maven.
+Voici les actions que nous allons réaliser au cours de cette étape:
+- écriture du test et éxécution en local
+- mise à jour de la couverture de test en local avec le nouveau test
+- mise à jour du reporting de l'éxécution et de la couverture de test dans la pipeline
+
+Cucumber est généralement utilisé pour des tests dits "d'intégration", pour une appli déployé sur un environnement, ou pour des tests end-to-end, là aussi sur un environnement.
+
+Cependant, je trouve que Cucumber a largement sa place pour des tests purement unitaire, pour de la logique métier par exemple.
+Bien faits et bien entretenus, ils sont largement plus lisibles que des tests Junit purs, et peuvent être une bonne documentation / specs de la logique métier, et une spec toujours à jour, et fiable car éxécutable et éxécuté à chaque build.
+Je les déconseillerais p-e pour faire du TDD, après avoir essayé quelques fois, c'est beaucoup plus long que Junit pur, les boucles de rouge-vert-refacto sur trop longues et trop frustrantes.
+
+Par contre, commencer en Junit pur,et substituer des tests unitaires ayant possiblement perdu en clareté après quelques jours ou semaines, par des tests `Cucumber` bien écrits, m'a l'air d'une approche à creuser.
+
+Ou alors p-e écrire ces tests Cucumber plus rapidement, soit à force d'en faire, soit avec une méthode ou des outils qui accélèreraient leur écriture (méthodes et outils que je ne connais pas à ce jour)
+
+#### 1. Ecriture du test et éxécution en local
+
+Nous ajoutons les dépendances `Maven` suivantes (fichier `pom.xml`):
+
+```xml
+<dependency>
+    <groupId>org.junit.vintage</groupId>
+    <artifactId>junit-vintage-engine</artifactId>
+    <version>${junit-jupiter.version}</version>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>io.cucumber</groupId>
+    <artifactId>cucumber-junit</artifactId>
+    <version>${cucumber.version}</version>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>io.cucumber</groupId>
+    <artifactId>cucumber-java</artifactId>
+    <version>${cucumber.version}</version>
+    <scope>test</scope>
+</dependency>
+```
+
+La dépendance `junit-vintage-engine` sert à éxécuter la classe "runner" de Cucumber, la librairie utilisée, `io.cucumber`, s'appuyant sur junit-4 uniquement à l'heure de l'écriture de cette article, et ne fournit pas d'implémentation basée sur junit-5. 
+
+Nous ajoutons la classe à tester suivante (fichier `src/test/resources/features/buildtime/test.feature`):
+
+```java
+package org.example;
+
+public class MyOtherClass {
+  public String hola(){
+    return "hola";
+  }
+}
+```
+
+Nous ajoutons le test `Cucumber` suivant (fichier `src/test/resources/features/buildtime/test.feature`):
+
+```gherkin
+Feature: build time feature
+  Scenario: build time test scenario
+    When we call `MyOtherClass.hola` method
+    Then the response is "hola"
+```
+
+Nous ajoutons le runner `Cucumber` suivant (fichier `src/test/java/org/example/CucumberRunnerTest.java`):
+
+```java
+package org.example;
+
+import io.cucumber.junit.Cucumber;
+import io.cucumber.junit.CucumberOptions;
+import org.junit.runner.RunWith;
+
+@RunWith(Cucumber.class)
+@CucumberOptions(
+    plugin = {
+        "pretty",
+        "junit:target/cucumber-reports/buildtime/cucumber-results.xml",
+        "usage:target/cucumber-reports/buildtime/cucumber-usage.json"},
+    glue = {"org.example"},
+    features = "src/test/resources/features/buildtime")
+public class CucumberRunnerTest {
+}
+```
+
+Nous ajoutons les steps d'implémentation `Cucumber` suivantes (fichier `src/test/java/org/example/CucumberStepDefinitions.java`):
+
+```java
+package org.example;
+
+import io.cucumber.java.en.Given;
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.When;
+import org.assertj.core.api.Assertions;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+public class CucumberStepDefinitions {
+
+  private String holaResponse;
+
+  @When("we call `MyOtherClass.hola` method")
+  public void whenWeCallOtherClassHola() {
+    holaResponse = new MyOtherClass().hola();
+  }
+
+  @Then("the response is {string}")
+  public void theResponseIs(String expectedResponse) {
+    assertThat(holaResponse).isEqualTo(expectedResponse);
+  }
+}
+```
+
+On vérifie ensuite:
+- que les tests se lancent bien en loca depuis l'IDE
+- que les tests se lancent bien en loca en ligne de commande
+- le rapport de la couverture de test en local
+- le rapport d'éxécution des tests dans la pipeline
+- le rapport de la couverture de test dans la pipeline
+
+Depuis l'IDE, via le fichier de feature:
+![](images/12.1-buildtime-unit-tests-cucumber.png)
+
+Depuis l'IDE, via la classe runner:
+![](images/12.2-buildtime-unit-tests-cucumber.png)
+
+En ligne de commande:
+![](images/12.3-buildtime-unit-tests-cucumber.png)
+
+Inspectons les rapports de couverture de test en local
+![](images/12.3.1-buildtime-unit-tests-cucumber.png)
+
+#### 2. Rapport de l'éxécution et de la couverture de test dans la pipeline  
+
+Nous modifions le buildspec dans `pipeline-cfn.yml`:
+![](images/12.4-buildtime-unit-tests-cucumber.png)
+
+Analysons cette modification:
+1. On supprime l'un des rapports pour ne pas avoir de rapport d'éxécution en double dans la pipeline. 
+2. Cucumber génère deja ses propres rapport d'éxécution au format `JUNITXML`, et avec une sortie plus propre que ce qui est généré par le plugin maven `surefire`. On le rajoute donc à la liste des fichiers à prendre en compte pour générer le rapport
+
+Vérifions les rapports dans générés dans la pipeline:
+![](images/12.4.1-buildtime-unit-tests-cucumber.png)
+On note l'apparition du rapport de couverture de test
+
+Inspectons le rapport de test dans la pipeline:
+![](images/12.5-buildtime-unit-tests-cucumber.png)
+On note le résultat de l'éxécution du test `Cucumber`
+
+Inspectons le rapport de couverture de test:
+![](images/12.6-buildtime-unit-tests-cucumber.png)
+On peut voir que la classe couverte par le test `Cucumber` vient de faire son apparition.
+
+Parfait! Ici aussi je vous invite à supprimer un test, rajouter des classes non testés, des tests qui échouent, etc. pour jouer avec l'outil, observer la modification de la couverture de test dans le rapport

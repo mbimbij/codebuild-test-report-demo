@@ -149,6 +149,9 @@ Resources:
             build:
               commands:
                 - mvn test
+            post_build:
+              finally:
+                - find target/surefire-reports/ -name "*Cucumber*" -delete
           reports:
             BuildTimeTests:
               files:
