@@ -29,6 +29,8 @@ Dans cette article, nous allons développer une pipeline de CI pour une applicat
   * [5. Mise en place d'un projet CodeBuild](#1.6-codebuild-project)
   * [6. Mise en place d'un projet CodePipeline](#1.7-codepipeline-project)
   * [7. Mise en place d'un projet Java avec éxécution d'un test unitaire "build time" en Junit - local](#1.8-buildtime-test-junit-execution-local)
+  * [8. Mise en place de la couverture de test avec Jacoco - local](#1.9-buildtime-test-junit-reporting-local)
+  * [9. Reporting de l'éxécution des des tests unitaires "build time" en Junit et de la couverture de tests dans la pipeline](#1.10-buildtime-test-junit-reporting-pipeline)
 - [Références](#references)
 
 <small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
@@ -635,3 +637,82 @@ Voici un ensemble de références intéressantes pour `Jacoco`, sur la configura
 - [https://www.baeldung.com/jacoco](https://www.baeldung.com/jacoco)
 - [https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html#Lifecycle_Reference](https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html#Lifecycle_Reference)
 - [https://maven.apache.org/guides/mini/guide-configuring-plugins.html](https://maven.apache.org/guides/mini/guide-configuring-plugins.html)
+
+### <a name="1.10-buildtime-test-junit-reporting-pipeline"></a> 9. Reporting de l'éxécution des des tests unitaires "build time" en Junit et de la couverture de tests dans la pipeline
+tag de départ: `1.9-buildtime-test-junit-reporting-local`
+tag d'arrivée: `1.10-buildtime-test-junit-reporting-pipeline`
+
+Dans cette étape, nous réaliserons les actions suivantes:
+
+- éxécution des tests dans la pipeline (dans le projet `CodeBuild`)
+- mise en place d'un cache S3 pour `CodeBuild`, destiné à mettre en cache le repository `Maven` local, sinon à chaque déclenchement, il va retélécharger les dépendances depuis maven central ... et c'est long
+- reporting de l'éxécution des tests
+- reporting de la couverture des tests
+
+Les modifications dans les ressources du template `CloudFormation` sont les suivantes:
+```yaml
+BuildProject:
+  Type: AWS::CodeBuild::Project
+  Properties:
+    Cache:
+      Type: S3
+      Location: !Sub '${S3Bucket}/maven-cache'
+    Source:
+      Type: CODEPIPELINE
+      BuildSpec: |
+        version: 0.2
+        phases:
+          install:
+            runtime-versions:
+              java: corretto11
+          build:
+            commands:
+              - mvn test
+        reports:
+          BuildTimeTests:
+            files:
+              - 'target/surefire-reports/TEST*.xml'
+          CoverageReport:
+            files:
+              - 'target/site/jacoco/jacoco.xml'
+            file-format: 'JACOCOXML'
+        cache:
+          paths:
+            - '/root/.m2/**/*'
+```
+
+Analysons les différences:
+![](images/11.1-buildtime-test-junit-reporting-pipeline.png)
+
+1. On déclare un cache pour le projet `CodeBuild`, dans le répertoire `maven-cache` du bucket S3 de la pipeline
+2. On définit un runtime java11 pour le build
+3. Dans la commnd à éxécuter dans la phase "build", on remplace `echo "hello world"` par `mvn test`
+4. On définit des "groupes de rapport" à associer au build, les répertoires où se trouvent les rapports, et le format des ces rapport
+  - 4.1 On définit un "groupe de rapport" du nom de "BuildTimeTests", destiné à recevoir les tests unitaires et les "tests d'intégration", lancés via `mvn verify`. Ces 2 types de tests sont éxécutés lors du build de l'application, aussi on les regroupe donc de cette manière. On cherche à les distinguer des tests éxécutés sur l'application après son déploiement sur un environnement, éxécutés habituellement après le build de l'application
+  - 4.2 On définit un "groupe de rapport" du nom de "CoverageReport", pour les rapports de couverture des tests "build time"
+5. On définit le répertoire à mettre en cache (et à récupérer depuis le cache S3), ici le repo `Maven` local
+
+Mettons à jour la pipeline:
+```shell
+./create-all.sh my-app
+```
+
+Vérifions que le builspec est bien mis à jour:
+![](images/11.2-buildtime-test-junit-reporting-pipeline.png)
+
+Vérifions le cache:
+![](images/11.3-buildtime-test-junit-reporting-pipeline.png)
+
+Parfait. Lançons maintenant une release sur la pipeline et inspectons le résultat:
+![](images/11.4-buildtime-test-junit-reporting-pipeline.png)
+![](images/11.5-buildtime-test-junit-reporting-pipeline.png)
+
+Voyons le détail du rapport d'éxécution:
+![](images/11.6-buildtime-test-junit-reporting-pipeline.png)
+
+Et le détail du rapport de couverture:
+![](images/11.7-buildtime-test-junit-reporting-pipeline.png)
+
+Parfait !
+Je vous invite à retirer un test, ou encore rajouter une classe non testée, pour vérifier que le rapport est bien modifié.
+

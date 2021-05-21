@@ -135,14 +135,31 @@ Resources:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+      Cache:
+        Type: S3
+        Location: !Sub '${S3Bucket}/maven-cache'
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
           version: 0.2
           phases:
+            install:
+              runtime-versions:
+                java: corretto11
             build:
               commands:
-                - echo "hello world"
+                - mvn test
+          reports:
+            BuildTimeTests:
+              files:
+                - 'target/surefire-reports/TEST*.xml'
+            CoverageReport:
+              files:
+                - 'target/site/jacoco/jacoco.xml'
+              file-format: 'JACOCOXML'
+          cache:
+            paths:
+              - '/root/.m2/**/*'
   Pipeline:
     Description: Creating a deployment pipeline for !Ref ApplicationName project in AWS CodePipeline
     Type: 'AWS::CodePipeline::Pipeline'
