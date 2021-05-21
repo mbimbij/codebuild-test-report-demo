@@ -153,6 +153,7 @@ Resources:
             BuildTimeTests:
               files:
                 - 'target/surefire-reports/TEST*.xml'
+                - 'target/cucumber-reports/buildtime/cucumber-results.xml'
             CoverageReport:
               files:
                 - 'target/site/jacoco/jacoco.xml'
