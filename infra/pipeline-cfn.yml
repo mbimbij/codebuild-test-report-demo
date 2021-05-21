@@ -148,7 +148,7 @@ Resources:
                 java: corretto11
             build:
               commands:
-                - mvn test
+                - mvn verify
             post_build:
               finally:
                 - find target/surefire-reports/ -name "*Cucumber*" -delete
@@ -156,10 +156,11 @@ Resources:
             BuildTimeTests:
               files:
                 - 'target/surefire-reports/TEST*.xml'
+                - 'target/failsafe-reports/TEST*.xml'
                 - 'target/cucumber-reports/buildtime/cucumber-results.xml'
             CoverageReport:
               files:
-                - 'target/site/jacoco/jacoco.xml'
+                - 'target/site/jacoco-aggregate/jacoco.xml'
               file-format: 'JACOCOXML'
           cache:
             paths:

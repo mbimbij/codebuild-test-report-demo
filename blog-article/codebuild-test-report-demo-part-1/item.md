@@ -973,4 +973,16 @@ Cette fois-ci, `MyClass` est couverte à 100%.
 
 On ne montrera pas de capture d'écran, vous pouvez le vérifier par vous-mêmes, dans les résultats partiels, `jacoco-ut` et `jacoco-it`, on observe une couverture partielle.
 
-#### 10.2 Ajout des tests d'intégration au rapport de couverture de test
+#### 10.3 Mise à jour des rapports d'éxécution et de couverture dans la pipeline
+
+![](images/13.8-buildtime-integration-tests-junit.png)
+Pour cela rien de plus simple, dans le `buildspec` du template de la pipeline:
+1. On éxécute `mvn verify` au lieu de `mvn test`
+2. On intègre les résultats des tests d'intégration publiés par le plugin maven `failsafe`
+3. on récupère le rapport de couverture de test dans `target/site/jacoco-aggregate/jacoco.xml`, au lieu de `target/site/jacoco/jacoco.xml`
+
+Poussons le code et vérifions les rapports de test générés:
+```shell
+./create-all.sh my-app
+```
+
