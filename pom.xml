@@ -14,6 +14,7 @@
 
         <junit-jupiter.version>5.7.2</junit-jupiter.version>
         <assertj.version>3.19.0</assertj.version>
+        <cucumber.version>6.10.4</cucumber.version>
 
         <maven-surefire-failsafe-plugin.version>3.0.0-M5</maven-surefire-failsafe-plugin.version>
         <jacoco.version>0.8.7</jacoco.version>
@@ -30,6 +31,18 @@
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-junit</artifactId>
+            <version>${cucumber.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.cucumber</groupId>
+            <artifactId>cucumber-java</artifactId>
+            <version>${cucumber.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
