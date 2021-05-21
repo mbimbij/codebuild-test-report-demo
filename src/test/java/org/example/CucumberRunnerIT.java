@@ -8,10 +8,10 @@ import org.junit.runner.RunWith;
 @CucumberOptions(
     plugin = {
         "pretty",
-        "junit:target/cucumber-reports/buildtime/cucumber-results.xml",
-        "usage:target/cucumber-reports/buildtime/cucumber-usage.json"},
+        "junit:target/cucumber-reports/buildtime/cucumber-integration-results.xml",
+        "usage:target/cucumber-reports/buildtime/cucumber-integration-usage.json"},
     glue = {"org.example"},
-    tags = "@unitTest",
+    tags = "@integrationTest",
     features = "src/test/resources/features/buildtime")
-public class CucumberRunnerTest {
+public class CucumberRunnerIT {
 }

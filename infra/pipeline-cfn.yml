@@ -152,6 +152,7 @@ Resources:
             post_build:
               finally:
                 - find target/surefire-reports/ -name "*Cucumber*" -delete
+                - find target/failsafe-reports/ -name "*Cucumber*" -delete
           reports:
             BuildTimeTests:
               files:
