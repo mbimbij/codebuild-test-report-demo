@@ -12,6 +12,9 @@
 
 # :fr: Description du projet
 
+Ce repo est accompagné d'une série d'articles (en cours d'écriture):
+- [https://joseph-mbimbi.fr/blog/codebuild-test-report-demo-part-1](https://joseph-mbimbi.fr/blog/codebuild-test-report-demo-part-1)
+
 Le but de ce projet et de servir de démo et de support pour l'intégration de rapport de tests à une pipeline de cicd dans AWS Developer Tools (CodeBuild, CodeDeploy, CodePipeline, etc.) pour une application java backend basique.
 
 Les types de tests que nous couvrirons seront:
@@ -22,6 +25,9 @@ Les types de tests que nous couvrirons seront:
   - des tests en Java / Cucumber, déclenchés via `Maven`
 
 # :gb: Project Description
+
+This repo comes with a series of blog articles (work in progress)
+- [https://joseph-mbimbi.fr/blog/codebuild-test-report-demo-part-1](https://joseph-mbimbi.fr/blog/codebuild-test-report-demo-part-1)
 
 The goal of this project is to demonstrate and be used as a future reference for integrating test reports to a cicd pipeline using AWS Developer Tools (CodeBuild, CodeDeploy, CodePipeline, etc.) for a basic java backend application.
 

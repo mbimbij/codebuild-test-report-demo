@@ -50,7 +50,7 @@ Le but est d'avoir un point de départ réutilisable, fournissant un exemple sim
 
 #### <a name="cible"></a> Cible
 
-Le but de la série d'articles et d'avoir au final:
+Le but de la série d'articles est d'avoir au final:
 - une application Java de base
 - une pipeline de CI/CD déployant l'application dans plusieurs instances EC2 derrière un Load Balancer
 - des tests unitaires et "d'intégration" (`mvn verify`) sont éxécutés lors de la phase de `Build` de la pipeline
