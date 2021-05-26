@@ -1,0 +1,25 @@
+{
+  "variables": {
+    "ami_id": "",
+    "ami_name": "",
+    "region": ""
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "access_key": "",
+      "secret_key": "",
+      "region": "{{user `region`}}",
+      "ami_name": "{{user `ami_name`}}",
+      "source_ami": "{{user `ami_id`}}",
+      "instance_type": "t2.micro",
+      "ssh_username": "ubuntu"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "script": "setup.sh"
+    }
+  ]
+}
