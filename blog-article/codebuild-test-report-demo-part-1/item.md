@@ -41,6 +41,9 @@ Dans cette article, nous allons développer une pipeline de CI pour une applicat
 
 ###  <a name="introduction-description-du-projet"></a> Introduction, Description du projet
 
+Cette article est le 1e d'une série. Voir aussi:
+- [partie 2](https://joseph-mbimbi.fr/blog/codebuild-test-report-demo-part-2)
+
 Dans cette série d'articles, nous allons développer une application Java backend très simple, typiquement composée uniquement d'une classe renvoyant une `String` en dur.
 
 Cette application sera accompagnée d'une pipeline de CI/CD avec éxécution de tests unitaires et de tests automatisés, éxécutés sur l'application déployée sur une ou plusieurs instances EC2.
