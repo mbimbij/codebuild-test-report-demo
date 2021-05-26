@@ -1,0 +1,38 @@
+Parameters:
+  ApplicationName:
+    Type: String
+    Description: Application Name
+  KeyName:
+    Type: String
+    Description: Key Name
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Ami Id
+
+Resources:
+  Ec2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ec2 security group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref Ec2SecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ApplicationName}-instance'
+        - Key: Application
+          Value: !Sub '${ApplicationName}'

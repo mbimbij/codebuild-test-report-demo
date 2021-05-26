@@ -24,6 +24,7 @@ Dans cette article, nous allons enrichir notre pipeline et déployer l'applicati
 - [Implémentation avec `CloudFormation`](#implementation-cloudformation)
   * [0. Refacto - Introduction d'un `Makefile` pour la création et la destruction des éléments d'infra](#2.0-refacto-intro-makefile-infra)
   * [1. Création d'une AMI (image EC2) prête à accueillir notre application](#2.1-creation-ami)
+  * [2. Création d'une instance EC2 via `CloudFormation`](#2.2-creation-instance-ec2)
 - [Références](#references)
 
 
@@ -199,6 +200,8 @@ Nous nous baserons sur l'outil `Packer` et nous baserons sur une AMI de base `Ub
 Il existe aussi l'outil d'AWS `EC2 Builder`, mais au moment de la rédaction de cette article, je ne suis pas assez familier avec EC2 Builder, je connais un peu mieux `Packer`, j'ai deja un side project avec sur lequel je peux m'appuyer, je n'ai pas trop envie d'y passer beaucoup de temps, et la création d'AMI n'est pas le but principal de la série d'articles.
 Cependant, `EC2 Builder` fera très certainement l'objet d'un prochain side project et d'un article associé.
 
+##### 2.1.1 Création de l'AMI avec Packer
+
 Les actions réalisées sont:
 
 1. ajout du fichier `infra/packer-ami/ubuntu-springboot-ready.json`, qui sera utilisé par `Packer` pour créer notre AMI:
@@ -330,6 +333,8 @@ Vérifions dans la console AWS:
 
 ![](images/1.3-creation-ami.png)
 
+##### 2.1.2 Création manuelle d'une instance EC2 à partir de notre image
+
 Créons rapidement une instance à partir de cette AMI, dans la console, cliquez sur "Actions > Launch":
 
 ![](images/1.4-creation-ami.png)
@@ -379,6 +384,173 @@ Un nouvel onglet s'ouvre, avec un terminal:
 3. On peut vérifier l'installation et l'état de l'agent `CodeDeploy` avec `systemctl status codedeploy-agent.service`
 
 Prochaine étape, automatiser cette création d'instance 
+
+#### <a name="2.2-creation-instance-ec2"></a> 2. Création d'une instance EC2 via `CloudFormation`
+
+tag de départ: `2.1-creation-ami`
+tag d'arrivée: `2.2-creation-instance-ec2`
+
+Le titre est assez explicite, dans cette étape, nous allons créer une instance EC2 avec `CloudFormation` 
+
+Pour cela, nous allons effectuer les actions, ajouts, modifications suivantes:
+
+1. Import d'une paire de clés SSH dans le compte AWS
+
+  - fichier `infra/create-ssh-key-pair.sh` 
+
+```shell
+#!/bin/bash
+
+if [[ "$#" -ne 2 ]]; then
+  echo -e "usage:\n./create-all.sh \$SSH_KEY_NAME \$SSH_KEY_PATH"
+  exit 1
+fi
+
+export SSH_KEY_NAME=$1
+export SSH_KEY_PATH=$2
+
+echo -e "##############################################################################"
+echo -e "creating ssh key pair \"$SSH_KEY_NAME\" from $SSH_KEY_PATH"
+echo -e "##############################################################################"
+PUBLIC_KEY_BASE_64=$(cat $SSH_KEY_PATH | base64)
+aws ec2 import-key-pair --key-name $SSH_KEY_NAME --public-key-material "$PUBLIC_KEY_BASE_64"
+```
+
+On ne peut pas créer de paire de clés SSH via `CloudFormation`, on se contera de la CLI AWS dans ce cas. 
+
+Que dire de particulier, il faut transmettre le contenu de la clé publique encodé en base64.
+
+  - fichier `infra/infra.env`
+
+```dotenv
+export GITHUB_REPO=mbimbij/codebuild-test-report-demo # deja présent
+export GITHUB_REPO_BRANCH=main                        # deja présent
+export SSH_KEY_NAME=local
+export SSH_KEY_PATH=~/.ssh/id_rsa.pub
+```
+
+Pour cette démo, on utilise la clé publique: `~/.ssh/id_rsa.pub`, que l'on uploadera avec l'id `local`. 
+
+Ainsi, si vous avez deja une paire de clés (et en tant que programmeur, sous linux, je présume que c'est le cas), cela devrait faciliter l'utilisation de ce projet / tutorial, et la connexion à l'instance EC2.
+
+2. Ajout d'un template `CloudFormation` pour l'instance EC2, fichier `infra/execution-environment-cfn.yml`:
+
+```yaml
+Parameters:
+  ApplicationName:
+    Type: String
+    Description: Application Name
+  KeyName:
+    Type: String
+    Description: Key Name
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Ami Id
+
+Resources:
+  Ec2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ec2 security group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref Ec2SecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ApplicationName}-instance'
+        - Key: Application
+          Value: !Sub '${ApplicationName}'
+```
+
+Analysons ce template:
+
+![](images/2.1-creation-instance-ec2.png)
+
+- 1. On définit un `Security Group` autorisant les connexions entrantes sur les ports: 
+  - 22, pour pouvoir y accéder en ssh
+  - 8080, car c'est le port par défaut sur lequel se binde les applications `SpringBoot`, que nous allons utiliser par la suite.
+- 2. On fait référence à un paramètre `AmiId`, dans lequel on placera l'id de l'AMI que l'on a créé dans l'étape #1
+- 3. On fait référence à la paire de clés définie juste avant, qui est la clé ssh publique de notre poste de développement
+- 4. On associe le `security group` à l'instance
+- 5. On définit un tag "Name", afin que l'instance ait un nom dans la console AWS
+- 6. On définit un tag "Application", ayant le nom de l'application. Plus tard, on utilisera ce nom pour le déploiement
+
+
+3. modifications dans le fichier `infra/Makefile` :
+
+```makefile
+SHELL := /bin/bash
+ifndef APPLICATION_NAME
+$(error APPLICATION_NAME is not set)
+endif
+include infra.env
+PIPELINE_STACK_NAME=$(APPLICATION_NAME)-pipeline
+EXECUTION_ENVIRONMENT_STACK_NAME=$(APPLICATION_NAME)-execution-environment
+
+all:
+	- $(MAKE) pipeline
+	- $(MAKE) ami
+	- $(MAKE) execution-environment
+pipeline:
+	./create-pipeline.sh $(APPLICATION_NAME) $(PIPELINE_STACK_NAME) $(GITHUB_REPO) $(GITHUB_REPO_BRANCH)
+ami:
+	$(eval BASE_AMI_ID := $(shell aws ssm get-parameters --names /aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id --query 'Parameters[0].[Value]' --output text))
+	$(eval AWS_REGION := $(shell aws configure get region))
+	./create-ami.sh $(APPLICATION_NAME) $(BASE_AMI_ID) $(AWS_REGION)
+ssh-key-pair:
+	./create-ssh-key-pair.sh $(SSH_KEY_NAME) $(SSH_KEY_PATH)
+execution-environment: ssh-key-pair
+	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
+	./create-execution-environment.sh $(APPLICATION_NAME) $(EXECUTION_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME)
+
+
+delete-all:
+	- $(MAKE) delete-pipeline
+delete-pipeline:
+	./delete-stack-wait-termination.sh $(PIPELINE_STACK_NAME)
+delete-ami:
+	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
+	aws ec2 deregister-image --image-id $(AMI_ID)
+delete-ssh-key-pair:
+	aws ec2 delete-key-pair --key-name $(SSH_KEY_NAME)
+delete-execution-environment: delete-ssh-key-pair
+	./delete-stack-wait-termination.sh $(EXECUTION_ENVIRONMENT_STACK_NAME)
+```
+
+Jetons un oeil du côté des ajouts effectués:
+
+![](images/2.2-creation-instance-ec2.png)
+
+Pas grand chose à ajouter, un ajoute des targets pour créer la paire de clés et l'instance, ainsi que pour les détruire
+
+Vérifions la création :
+
+```shell
+cd infra #si vous n'y êtes pas deja
+make all APPLICATION_NAME=my-app
+```
+
+![](images/2.3-creation-instance-ec2.png)
+
+L'instance est bien créé. Vérifions que l'on peut s'y connecter en utilisant notre clé ssh par défaut (sans l'expliciter)
+
+![](images/2.4-creation-instance-ec2.png)
+
+Parfait ! Prochaine étape, revenir sur la pipeline, et réussir à pousser la sortie de l'étape de build sur l'instance EC2. Première étape pour déployer l'application Java
 
 ## <a name="references"></a> Références
 - code source github: [https://github.com/mbimbij/codebuild-test-report-demo](https://github.com/mbimbij/codebuild-test-report-demo)
