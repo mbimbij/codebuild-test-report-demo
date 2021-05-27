@@ -112,6 +112,10 @@ Resources:
                 Resource: !GetAtt
                   - BuildProject
                   - Arn
+              - Effect: Allow
+                Action:
+                  - codedeploy:*
+                Resource: !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}*'
       AssumeRolePolicyDocument:
         Statement:
           - Action: "sts:AssumeRole"
@@ -167,6 +171,44 @@ Resources:
           cache:
             paths:
               - '/root/.m2/**/*'
+          artifacts:
+            files:
+              - '**/*'
+  CodeDeployRole:
+    Type: 'AWS::IAM::Role'
+    Description: IAM role for !Ref ApplicationName code deploy deployment group
+    Properties:
+      RoleName: !Join
+        - '-'
+        - - !Ref ApplicationName
+          - deploy-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service:
+                - codedeploy.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Sub '${ApplicationName}-deploy-application'
+      ComputePlatform: Server
+  CodeDeployDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      ServiceRoleArn: !GetAtt
+        - CodeDeployRole
+        - Arn
+      DeploymentGroupName: !Sub '${ApplicationName}-deployment-group'
+      DeploymentConfigName: CodeDeployDefault.OneAtATime
+      Ec2TagFilters:
+        - Key: Application
+          Value: !Ref ApplicationName
+          Type: KEY_AND_VALUE
   Pipeline:
     Description: Creating a deployment pipeline for !Ref ApplicationName project in AWS CodePipeline
     Type: 'AWS::CodePipeline::Pipeline'
@@ -208,3 +250,19 @@ Resources:
               Configuration:
                 ProjectName:
                   Ref: BuildProject
+        - Name: Deploy
+          Actions:
+            - Name: Deploy
+              InputArtifacts:
+                - Name: BuildOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName:
+                  Ref: CodeDeployApplication
+                DeploymentGroupName:
+                  Ref: CodeDeployDeploymentGroup
+              RunOrder: 1

@@ -25,6 +25,7 @@ Dans cette article, nous allons enrichir notre pipeline et déployer l'applicati
   * [0. Refacto - Introduction d'un `Makefile` pour la création et la destruction des éléments d'infra](#2.0-refacto-intro-makefile-infra)
   * [1. Création d'une AMI (image EC2) prête à accueillir notre application](#2.1-creation-ami)
   * [2. Création d'une instance EC2 via `CloudFormation`](#2.2-creation-instance-ec2)
+  * [3. Déploiement - 1e étape - Copier la sortie du stage `Build` sur l'instance EC2](#2.3-deploy-1-copy-build-output-raw)
 - [Références](#references)
 
 
@@ -551,6 +552,157 @@ L'instance est bien créé. Vérifions que l'on peut s'y connecter en utilisant 
 ![](images/2.4-creation-instance-ec2.png)
 
 Parfait ! Prochaine étape, revenir sur la pipeline, et réussir à pousser la sortie de l'étape de build sur l'instance EC2. Première étape pour déployer l'application Java
+
+#### <a name="2.3-deploy-1-copy-build-output-raw"></a> 3. Déploiement - 1e étape - Copier la sortie du stage `Build` sur l'instance EC2 
+
+tag de départ: `2.2-creation-instance-ec2`
+tag d'arrivée: `2.3-deploy-1-copy-build-output-raw`
+
+Dans cette étape, nous allons créer un "stage" de déploiement dans la pipeline. Pour rester dans une approche baby-step, nous allons nous contenter de copier la sortie brute du stage "Build" de cette même pipeline.
+
+Pour cela nous effectuons les actions suivantes:
+
+1. Modification du template de la Pipeline, `infra/pipeline-cfn.yml`, pour y ajouter un stage "Deploy"
+  - 1.1 Ajout d'une permission au rôle `PipelineRole` pour lui permettre d'éxécuter des déploiements basés sur `CodeDeploy`
+
+```yaml
+- Effect: Allow
+  Action:
+    - codedeploy:*
+  Resource: !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}*'
+```
+  - 1.2 Modification du `buildspec` dans la ressource `BuildProject` afin de copier tous les fichiers dans les "OutputArtifacts"
+
+```yaml
+artifacts:
+  files:
+    - '**/*'
+```
+
+  - 1.3 Ajout d'une ressource: `CodeDeployApplication` qui sera le projet / application `CodeDeploy`
+  
+```yaml
+CodeDeployApplication:
+  Type: AWS::CodeDeploy::Application
+  Properties:
+    ApplicationName: !Sub '${ApplicationName}-deploy-application'
+    ComputePlatform: Server
+```
+
+  - 1.4 Ajout d'une ressource: `CodeDeployDeploymentGroup` -> un groupe de déploiement de l'application précédente, qui va concrètement procéder au déploiement, à partir d'un fichier `appspec.yml` dans les artefacts en entrée
+    
+```yaml
+CodeDeployDeploymentGroup:
+  Type: AWS::CodeDeploy::DeploymentGroup
+  Properties:
+    ApplicationName: !Ref CodeDeployApplication
+    ServiceRoleArn: !GetAtt
+      - CodeDeployRole
+      - Arn
+    DeploymentGroupName: !Sub '${ApplicationName}-deployment-group'
+    DeploymentConfigName: CodeDeployDefault.OneAtATime
+    Ec2TagFilters:
+      - Key: Application
+        Value: !Ref ApplicationName
+        Type: KEY_AND_VALUE
+```
+
+  - 1.5 Ajout d'une ressource: `CodeDeployRole` -> le rôle que va utiliser le groupe de déploiement. On lui attache une policy managée par AWS: `AWSCodeDeployRole`
+
+```yaml
+CodeDeployRole:
+  Type: 'AWS::IAM::Role'
+  Description: IAM role for !Ref ApplicationName code deploy deployment group
+  Properties:
+    RoleName: !Join
+      - '-'
+      - - !Ref ApplicationName
+        - deploy-role
+    AssumeRolePolicyDocument:
+      Statement:
+        - Action: "sts:AssumeRole"
+          Effect: Allow
+          Principal:
+            Service:
+              - codedeploy.amazonaws.com
+    ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+```
+
+  - 1.6 Ajout d'un stage `Deploy` à la ressource: `Pipeline`
+
+```yaml
+- Name: Deploy
+  Actions:
+    - Name: Deploy
+      InputArtifacts:
+        - Name: BuildOutput
+      ActionTypeId:
+        Category: Deploy
+        Owner: AWS
+        Version: 1
+        Provider: CodeDeploy
+      Configuration:
+        ApplicationName:
+          Ref: CodeDeployApplication
+        DeploymentGroupName:
+          Ref: CodeDeployDeploymentGroup
+      RunOrder: 1
+```
+
+2. Modification du template de l'instance ec2, `infra/execution-environment-cfn.yml`
+
+![](images/3.1-deploy-raw-build-output.png)
+  - 2.1 On associe à l'instance EC2 le profile `Ec2InstanceProfile`
+  - 2.2 On définit la ressource pour le profile `Ec2InstanceProfile`, on y associant le rôle IAM `Ec2InstanceRole`
+  - 2.3 On définit le rôle IAM `Ec2InstanceRole`, ayant les policies managées
+    - `AmazonEC2RoleforAWSCodeDeploy`, pour permettre à l'agent `codedeploy` de récupérer les artefacts depuis S3
+    - `AmazonSSMManagedInstanceCore`, pour permettre à l'instance de s'enregistrer auprès de `System Manager`. Sans cela, le déploiement reste indéfiniment dans l'état `Pending`, sans absolument aucune log ... 
+
+3. Un fichier `appspec` ultra minimaliste. La présence de ce fichier est obligatoire
+
+```yaml
+version: 0.0
+os: linux
+```
+
+... Et rien de plus !
+
+Mettons à jour notre infra: 
+
+```shell
+cd infra #si vous n'y êtes pas deja
+make all APPLICATION_NAME=my-app
+```
+
+poussons le code dans le repo git relançons une release dans la pipeline si elle n'est pas déclenchée automatiquement. Tout devrait être vert:
+
+![](images/3.2-deploy-raw-build-output.png)
+
+Allons jeter un oeil au déploiement dans `CodeDeploy`. Dans "Deploy > Deployments", rafraîchir éventuellement:
+
+![](images/3.3-deploy-raw-build-output.png)
+
+J'ai plusieurs déploiement dans mon screenshot, en espérant que cela ne soit pas source de confusion.
+
+Notons l'id du dernier déploiement
+
+connectons-nous en ssh sur l'instance EC2 :
+
+```shell
+Last login: Thu May 27 08:15:01 2021 from 176.173.232.167
+ubuntu@ip-172-31-40-53:~$ cd /opt/codedeploy-agent/deployment-root/<some-deployment-group-id>/<last-deployment-id>/deployment-archive/
+ubuntu@ip-172-31-40-53:/opt/codedeploy-agent/deployment-root/1abcd735-aa71-4a4d-8f68-ccc88a65d2e4/d-C1CX5XBU8/deployment-archive$ ls
+README.md  appspec.yml  blog-article  infra  pom.xml  reposition-tag.sh  src  target
+```
+
+l'id du groupe de déploiement, ainsi que du dernier déploiement, seront différents chez vous.
+
+Cependant, on peut constater que le code source et le répertoire `target` sont bien présents dans l'instance EC2. 
+
+Félicitations, nous avons bien réssui à effectuer un premier déploiement.
+
+Prochaine étape, créer une interface REST dans le code `Java`, déployer l'application en tant que service et vérifier que tout fonctionne bien.  
 
 ## <a name="references"></a> Références
 - code source github: [https://github.com/mbimbij/codebuild-test-report-demo](https://github.com/mbimbij/codebuild-test-report-demo)

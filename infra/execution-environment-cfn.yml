@@ -31,8 +31,32 @@ Resources:
       KeyName: !Ref KeyName
       SecurityGroups:
         - !Ref Ec2SecurityGroup
+      IamInstanceProfile: !Ref Ec2InstanceProfile
       Tags:
         - Key: Name
           Value: !Sub '${ApplicationName}-instance'
         - Key: Application
           Value: !Sub '${ApplicationName}'
+  Ec2InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+        - Ref: Ec2InstanceRole
+  Ec2InstanceRole:
+    Type: 'AWS::IAM::Role'
+    Description: IAM role for !Ref ApplicationName EC2 instance profile
+    Properties:
+      RoleName: !Join
+        - '-'
+        - - !Ref ApplicationName
+          - ec2-instance-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
