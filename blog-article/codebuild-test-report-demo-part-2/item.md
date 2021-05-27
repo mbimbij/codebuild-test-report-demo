@@ -26,6 +26,7 @@ Dans cette article, nous allons enrichir notre pipeline et déployer l'applicati
   * [1. Création d'une AMI (image EC2) prête à accueillir notre application](#2.1-creation-ami)
   * [2. Création d'une instance EC2 via `CloudFormation`](#2.2-creation-instance-ec2)
   * [3. Déploiement - 1e étape - Copier la sortie du stage `Build` sur l'instance EC2](#2.3-deploy-1-copy-build-output-raw)
+  * [4. Intégration d'une interface REST au code Java - `SpringBoot`](#2.4-java-springboot-rest-interface)
 - [Références](#references)
 
 
@@ -702,7 +703,27 @@ Cependant, on peut constater que le code source et le répertoire `target` sont 
 
 Félicitations, nous avons bien réssui à effectuer un premier déploiement.
 
-Prochaine étape, créer une interface REST dans le code `Java`, déployer l'application en tant que service et vérifier que tout fonctionne bien.  
+Prochaine étape, créer une interface REST dans le code `Java`, déployer l'application en tant que service et vérifier que tout fonctionne bien.
+
+#### <a name="2.4-java-springboot-rest-interface"></a> 4. Intégration d'une interface REST au code Java - `SpringBoot`
+
+tag de départ: `2.3-deploy-1-copy-build-output-raw`
+tag d'arrivée: `2.4-java-springboot-rest-interface`
+
+Dans cette étape, nous allons rajouter une interface REST très simple, en utilisant `SpringBoot`.
+
+Nous rajoutons ou modifions:
+- le fichier `pom.xml`:
+  - ajout du `spring-boot-parent`
+  - ajout des dépendances `spring-boot-starter-web` et `spring-boot-starter-test`
+  - exclusion de la classe `MySpringApplication` de la couverture de test
+- un main `SpringBoot`: `MySpringApplication`
+- un controller REST `SpringBoot`: `MyRestController`
+- un test du controller REST: `MyRestControllerIT`
+  - Après hésitation et une recherche rapide google, j'ai décidé de le suffixer en `IT` plutôt qu'en `Test`, dans la mesure où un contexte Spring est créé et que ce test prend quelques seconde. Mais habituellement je suffixe avec `Test`, je peux entendre les arguments dans les 2 sens, surtout quand on teste une "slice" de l'application uniquement (BDD, messaging, REST) et qu'on mock le reste. En ce qui me concerne, la question de où placer et nommer ce genre de tests de manière standard reste ouverte. 
+
+On peut vérifier que tout marche comme il le faut, inspecter en local les rapports de test et de couverteure via un `mvn clean verify` 
+
 
 ## <a name="references"></a> Références
 - code source github: [https://github.com/mbimbij/codebuild-test-report-demo](https://github.com/mbimbij/codebuild-test-report-demo)
