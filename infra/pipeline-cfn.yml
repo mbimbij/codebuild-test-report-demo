@@ -154,6 +154,9 @@ Resources:
               commands:
                 - mvn verify
             post_build:
+              commands:
+                # move the jar (by wildcard, agnostic to its name) to top level application.jar
+                - mv target/*.jar application.jar
               finally:
                 - find target/surefire-reports/ -name "*Cucumber*" -delete
                 - find target/failsafe-reports/ -name "*Cucumber*" -delete
@@ -173,7 +176,10 @@ Resources:
               - '/root/.m2/**/*'
           artifacts:
             files:
-              - '**/*'
+              - application.jar
+              - appspec.yml
+              - 'scripts/*'
+              - application.service
   CodeDeployRole:
     Type: 'AWS::IAM::Role'
     Description: IAM role for !Ref ApplicationName code deploy deployment group

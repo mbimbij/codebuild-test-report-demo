@@ -1,0 +1,11 @@
+[Unit]
+Description=application
+After=syslog.target
+
+[Service]
+User=ubuntu
+ExecStart=java -jar /opt/application/application.jar
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

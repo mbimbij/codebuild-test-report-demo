@@ -27,6 +27,7 @@ Dans cette article, nous allons enrichir notre pipeline et déployer l'applicati
   * [2. Création d'une instance EC2 via `CloudFormation`](#2.2-creation-instance-ec2)
   * [3. Déploiement - 1e étape - Copier la sortie du stage `Build` sur l'instance EC2](#2.3-deploy-1-copy-build-output-raw)
   * [4. Intégration d'une interface REST au code Java - `SpringBoot`](#2.4-java-springboot-rest-interface)
+  * [5. Déploiement de l'application Java en tant que service `SystemD`](#2.5-deploy-java-application-as-service)
 - [Références](#references)
 
 
@@ -724,6 +725,213 @@ Nous rajoutons ou modifions:
 
 On peut vérifier que tout marche comme il le faut, inspecter en local les rapports de test et de couverteure via un `mvn clean verify` 
 
+#### <a name="2.5-deploy-java-application-as-service"></a> 5. Déploiement de l'application Java en tant que service `SystemD`
+
+tag de départ: `2.4-java-springboot-rest-interface`
+tag d'arrivée: `2.5-deploy-java-application-as-service`
+
+Dans cette étape, nous allons déployer l'application Java en tant que service `SystemD`, puis vérifier manuellement que l'on peut accéder à l'endpoint REST, et que la pipeline déploie bien les mises à jour du code
+
+1. modification de `./infra/pipeline-cfn.yml`: nous modifions le `buildspec` de la ressource `BuildProject`, qui devient:
+
+```yaml
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      java: corretto11
+  build:
+    commands:
+      - mvn verify
+  post_build:
+    commands:
+      # move the jar (by wildcard, agnostic to its name) to top level application.jar
+      - mv target/*.jar application.jar
+    finally:
+      - find target/surefire-reports/ -name "*Cucumber*" -delete
+      - find target/failsafe-reports/ -name "*Cucumber*" -delete
+reports:
+  BuildTimeTests:
+    files:
+      - 'target/surefire-reports/TEST*.xml'
+      - 'target/failsafe-reports/TEST*.xml'
+      - 'target/cucumber-reports/buildtime/cucumber-results.xml'
+      - 'target/cucumber-reports/buildtime/cucumber-integration-results.xml'
+  CoverageReport:
+    files:
+      - 'target/site/jacoco-aggregate/jacoco.xml'
+    file-format: 'JACOCOXML'
+cache:
+  paths:
+    - '/root/.m2/**/*'
+artifacts:
+  files:
+    - application.jar
+    - appspec.yml
+    - 'scripts/*'
+    - application.service
+```
+
+Analysons les différences:
+
+![](images/5.1-deploy-as-systemd-service.png)
+
+- 1. On déplace le jar au top niveau, en lui donnant le nom `application.jar`. Comme l'indique le commentaire, ça permet au déploiement d'être "agnostique" quand au nom du projet, de sa version, et de l'artefact généré, et permet à la conf et aux fichiers liés au déploiement d'être assez génériques et réutilisables sur d'autres projets
+- 2. On place dans la sortie du stage "Build" uniquement les fichiers nécessaires:
+  - `application.jar`, de manière assez évidente
+  - `appspec.yml`: le descriptif du déploiement
+  - `scripts/*`: tous les scripts utilisés par `appspec.yml` pour le déploiement
+  - `application.service`, pour pouvoir créer un service `SystemD` pour l'application 
+
+2. On ajoute un script `scripts/stop_server.sh`:
+
+```shell
+#! /bin/bash
+systemctl stop application
+```
+
+3. On ajoute un script `scripts/before_install.sh`:
+
+```shell
+#! /bin/bash
+mkdir -p /opt/application/                      # on installera nos artefacts dans /opt/application/ 
+rm -rf /etc/systemd/system/application.service  # on supprime le service existant
+rm -rf /opt/application/application.jar         # on supprime le jar existant
+```
+
+4. On ajoute un script `scripts/start_server.sh`:
+
+```shell
+#! /bin/bash
+systemctl daemon-reload                         # au cas où le nouveau fichier de service est différent de l'ancien
+systemctl start application                     # on démarre le service
+```
+
+5. On ajoute un script `scripts/validate_service.sh`:
+
+```shell
+#! /bin/bash
+#! /bin/bash
+SECONDS=0
+PORT=8080
+RETRY_INTERVAL_SECONDS=2
+until curl -X GET "http://localhost:$PORT"
+do
+  echo "Application not listening yet on port $PORT. Retrying in $RETRY_INTERVAL_SECONDS second(s)..."
+  sleep $RETRY_INTERVAL_SECONDS
+done
+```
+
+6. On ajoute un fichier `application.service`:
+```unit file (systemd)
+[Unit]
+Description=application
+After=syslog.target
+
+[Service]
+User=ubuntu
+ExecStart=java -jar /opt/application/application.jar
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Que l'on a récupéré depuis la documentation de SpringBoot [https://docs.spring.io/spring-boot/docs/current/reference/html/deployment.html#deployment.installing.nix-services.system-d](https://docs.spring.io/spring-boot/docs/current/reference/html/deployment.html#deployment.installing.nix-services.system-d) 
+
+7. On a ajouté du contenu au fichier `appspec.yml`, dont le contenu est maintenant:
+
+```yaml
+version: 0.0
+os: linux
+files:
+  - source: /application.service
+    destination: /etc/systemd/system
+  - source: /application.jar
+    destination: /opt/application
+hooks:
+  ApplicationStop:
+    - location: scripts/stop_server.sh
+      timeout: 10
+      runas: root
+  BeforeInstall:
+    - location: scripts/before_install.sh
+      timeout: 5
+      runas: root
+  AfterInstall:
+    - location: scripts/start_server.sh
+      timeout: 5
+      runas: root
+  ValidateService:
+    - location: scripts/validate_service.sh
+      timeout: 20
+      runas: root
+```
+
+Analysons rapidement les ajouts:
+
+- 1. On copie le fichier `.service` dans l'un des répertoires utilisés par `SystemD` pour référencer les déclarations de services
+  - la racine de la "source" est le répertoire de déploiement, soit, en reprenant une des étapes précédentes : `/opt/codedeploy-agent/deployment-root/<some-deployment-group-id>/<last-deployment-id>/deployment-archive/`
+  - la racine de la destination par contre est bien la racine du filesystem
+- 2. On copie le `.jar` vers le réperoire que l'on a choisi pour acceuillir les artefacts du déploiement
+- 3. Lors de la phase `ApplicationStop` du cycle de vie du déploiement, on éxécute le script `scripts/stop_server.sh` en tant que user `root`, avec un timeout de 10 secondes
+- 4. Lors de la phase `BeforeInstall` du cycle de vie du déploiement, on éxécute le script `scripts/before_install.sh` en tant que user `root`, avec un timeout de 10 secondes
+- 5. Lors de la phase `AfterInstall` du cycle de vie du déploiement, on éxécute le script `scripts/start_server.sh` en tant que user `root`, avec un timeout de 10 secondes
+- 6. Lors de la phase `ValidateService` du cycle de vie du déploiement, on éxécute le script `scripts/start_server.sh` en tant que user `root`, avec un timeout de 20 secondes. Ce script effectue un "sanity check" de l'application, et vérifie qu'elle va être en mesure de répondre à un curl sur le port 8080
+
+Plus d'infos sur le cycle de vie d'un déploiement sur EC2 / On-premises et les différents hooks dispos ici:
+[https://docs.aws.amazon.com/codedeploy/latest/userguide/reference-appspec-file-structure-hooks.html#appspec-hooks-server](https://docs.aws.amazon.com/codedeploy/latest/userguide/reference-appspec-file-structure-hooks.html#appspec-hooks-server)
+
+Mettons à jour notre pipeline:
+
+```shell
+cd infra #si vous n'y êtes pas deja
+make pipeline APPLICATION_NAME=my-app # `make all APPLICATION_NAME=my-app` marcherait tout aussi bien
+```
+
+Enfin poussons nos modifications et déclenchons une release sur la pipeline au besoin, elle devrait être verte:
+
+![](images/5.3-deploy-as-systemd-service.png)
+
+Le port 8080 étant accessible sur l'instance EC2, on devrait pouvoir interroger l'interface REST via `curl` ou un navigateur:
+
+```shell
+joseph@joseph-ThinkPad-T480 infra ±|main ✗|→ curl ubuntu@ec2-35-181-54-196.eu-west-3.compute.amazonaws.com:8080 -w "\n"
+hello world
+```
+
+Hourra, notre web service est bien déployé. Vérifions maintenant que notre pipeline déploie comme il faut une modification du code. Modifions la réponse du controlleur REST:
+
+```java
+package org.example;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class MyRestController {
+
+  public static final String RESPONSE = "hello world 2";
+
+  @GetMapping("/")
+  public String get() {
+    return RESPONSE;
+  }
+}
+```
+
+Poussons cette modification.
+La pipeline devrait toujours être verte. 
+
+Une fois le déploiement terminé, effectuons à nouveau notre requête `curl`:
+
+```shell
+joseph@joseph-ThinkPad-T480 infra ±|main ✗|→ curl ubuntu@ec2-35-181-54-196.eu-west-3.compute.amazonaws.com:8080 -w "\n"
+hello world 2
+```
+
+Parfait. Nous pouvons passer à la prochaine étape.
 
 ## <a name="references"></a> Références
 - code source github: [https://github.com/mbimbij/codebuild-test-report-demo](https://github.com/mbimbij/codebuild-test-report-demo)
+- les hooks et le cycle de vie des déploiements sur EC2 / on-premises [https://docs.aws.amazon.com/codedeploy/latest/userguide/reference-appspec-file-structure-hooks.html#appspec-hooks-server](https://docs.aws.amazon.com/codedeploy/latest/userguide/reference-appspec-file-structure-hooks.html#appspec-hooks-server)
