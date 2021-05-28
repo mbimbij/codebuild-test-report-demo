@@ -7,9 +7,9 @@ PIPELINE_STACK_NAME=$(APPLICATION_NAME)-pipeline
 EXECUTION_ENVIRONMENT_STACK_NAME=$(APPLICATION_NAME)-execution-environment
 
 all:
-	- $(MAKE) pipeline
 	- $(MAKE) ami
 	- $(MAKE) execution-environment
+	- $(MAKE) pipeline
 pipeline:
 	./create-pipeline.sh $(APPLICATION_NAME) $(PIPELINE_STACK_NAME) $(GITHUB_REPO) $(GITHUB_REPO_BRANCH)
 ami:
@@ -25,6 +25,8 @@ execution-environment: ssh-key-pair
 
 delete-all:
 	- $(MAKE) delete-pipeline
+	- $(MAKE) delete-execution-environment
+	- $(MAKE) delete-ami
 delete-pipeline:
 	./delete-stack-wait-termination.sh $(PIPELINE_STACK_NAME)
 delete-ami:

@@ -28,6 +28,7 @@ Dans cette article, nous allons enrichir notre pipeline et déployer l'applicati
   * [3. Déploiement - 1e étape - Copier la sortie du stage `Build` sur l'instance EC2](#2.3-deploy-1-copy-build-output-raw)
   * [4. Intégration d'une interface REST au code Java - `SpringBoot`](#2.4-java-springboot-rest-interface)
   * [5. Déploiement de l'application Java en tant que service `SystemD`](#2.5-deploy-java-application-as-service)
+  * [6. Test "d'intégration" sur notre environnement EC2](#2.6-staging-tests-post-deploy)
 - [Références](#references)
 
 
@@ -812,7 +813,6 @@ systemctl start application                     # on démarre le service
 ```shell
 #! /bin/bash
 #! /bin/bash
-SECONDS=0
 PORT=8080
 RETRY_INTERVAL_SECONDS=2
 until curl -X GET "http://localhost:$PORT"
@@ -823,7 +823,8 @@ done
 ```
 
 6. On ajoute un fichier `application.service`:
-```unit file (systemd)
+
+```
 [Unit]
 Description=application
 After=syslog.target
@@ -868,7 +869,10 @@ hooks:
       runas: root
 ```
 
-Analysons rapidement les ajouts:
+
+Analysons rapidement les différences:
+
+![](images/5.2-deploy-as-systemd-service.png)
 
 - 1. On copie le fichier `.service` dans l'un des répertoires utilisés par `SystemD` pour référencer les déclarations de services
   - la racine de la "source" est le répertoire de déploiement, soit, en reprenant une des étapes précédentes : `/opt/codedeploy-agent/deployment-root/<some-deployment-group-id>/<last-deployment-id>/deployment-archive/`
@@ -931,6 +935,350 @@ hello world 2
 ```
 
 Parfait. Nous pouvons passer à la prochaine étape.
+
+#### <a name="2.6-staging-tests-post-deploy"></a> 6. Test "d'intégration" sur notre environnement EC2
+
+tag de départ: `2.5-deploy-java-application-as-service`
+tag d'arrivée: `2.6-staging-tests-post-deploy`
+
+Dans cette étape, nous allons rajouter une action au stage "Deploy" de notre pipeline, afin de lancer un test `Cucumber`, vérifiant la réponse de l'endpoint REST.
+
+##### <a name="2.6.1-refactos-et-correctifs"></a> 6.1 Refactos et correctifs
+
+Nous commençons par corriger la target `delete-all` dans le `Makefile`, à laquelle il manquait des étapes
+
+![](images/6.1-staging-tests.png)
+
+##### <a name="2.6.2-ajout-test-staging-cucumber-java"></a> 6.2 Ajout d'un test `Cucumber`
+
+Nous ajoutons une dépendance `Maven`:
+
+```xml
+<dependency>
+    <groupId>org.projectlombok</groupId>
+    <artifactId>lombok</artifactId>
+    <scope>provided</scope>
+</dependency>
+```
+
+Nous ajoutons la feature suivante dans `./src/test/resources/features/staging/test-staging.feature` :
+
+```gherkin
+Feature: API test
+
+  Scenario: API returns expected response
+    When we call the REST endpoint "/"
+    Then the REST response is as following:
+      | httpStatus | 200           |
+      | body       | "hello world" |
+```
+
+Nous ajoutons la classe d'implémentation des steps,`/src/test/java/org/example/CucumberStepDefinitionsStaging.java`:
+
+```java
+package org.example;
+
+import io.cucumber.java.en.Then;
+import io.cucumber.java.en.When;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@Slf4j
+public class CucumberStepDefinitionsStaging {
+
+  private ResponseEntity<String> responseEntity;
+
+  @When("we call the REST endpoint {string}")
+  public void weCallTheRESTEndpoint(String endpoint) {
+    String restEndpointUrl = buildEndpointUrl();
+    log.info("calling url: \"{}\"",restEndpointUrl);
+    responseEntity = new RestTemplate().getForEntity(restEndpointUrl, String.class);
+  }
+
+  private String buildEndpointUrl() {
+    String restEndpointHostname = System.getenv("REST_ENDPOINT_HOSTNAME");
+    String restEndpointProtocol = System.getenv("REST_ENDPOINT_PROTOCOL");
+    String restEndpointPort = System.getenv("REST_ENDPOINT_PORT");
+    return restEndpointProtocol+"://"+restEndpointHostname+":"+restEndpointPort;
+  }
+
+  @Then("the REST response is as following:")
+  public void theRESTResponseIsAsFollowing(Map<String, String> expectedValues) {
+    assertThat(responseEntity.getStatusCodeValue()).isEqualTo(200);
+    assertThat(responseEntity.getBody()).isEqualTo(MyRestController.RESPONSE);
+  }
+}
+```
+
+Le runner:
+
+```java
+package org.example;
+
+import io.cucumber.junit.Cucumber;
+import io.cucumber.junit.CucumberOptions;
+import org.junit.runner.RunWith;
+import org.springframework.boot.test.context.SpringBootTest;
+
+import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
+
+@SpringBootTest(webEnvironment = RANDOM_PORT)
+@RunWith(Cucumber.class)
+@CucumberOptions(
+    plugin = {
+        "pretty",
+        "junit:target/cucumber-reports/staging/cucumber-staging-results.xml",
+        "usage:target/cucumber-reports/staging/cucumber-staging-usage.json"},
+    glue = {"org.example"},
+    features = "src/test/resources/features/staging")
+public class CucumberRunnerStaging {
+}
+```
+
+##### <a name="2.6.3-ajout-action-test-pipeline"></a> 6.3 Ajout d'une action de test dans la pipline 
+
+Nous ajoutons l'export suivant dans le template de l'instance ec2, `./infra/execution-environment-cfn.yml`:
+
+```yaml
+Outputs:
+  Ec2InstancePublicDnsName:
+    Value: !GetAtt
+      - Ec2Instance
+      - PublicDnsName
+    Export:
+      Name: Ec2InstancePublicDnsName
+```
+
+Nous ajoutons un rôle pour le projet `CodeBuild` qui lancera les tests, en tant que ressource `CloudFormation`, dans le fichier `./infra/pipeline-cfn.yml` :
+
+```yaml
+StagingTestsRole:
+  Type: 'AWS::IAM::Role'
+  Description: IAM role for !Ref ApplicationName staging test (using CodeBuild)
+  Properties:
+    RoleName: !Join
+      - '-'
+      - - !Ref ApplicationName
+        - staging-test-role
+    Path: /
+    Policies:
+      - PolicyName: !Join
+          - '-'
+          - - !Ref ApplicationName
+            - staging-test-policy
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+                - s3:GetObjectVersion
+                - s3:GetBucketAcl
+                - s3:GetBucketLocation
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
+                - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
+            - Effect: Allow
+              Action:
+                - codebuild:CreateReportGroup
+                - codebuild:CreateReport
+                - codebuild:UpdateReport
+                - codebuild:BatchPutTestCases
+                - codebuild:BatchPutCodeCoverages
+              Resource: !Sub 'arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${ApplicationName}-*'
+    AssumeRolePolicyDocument:
+      Statement:
+        - Action: "sts:AssumeRole"
+          Effect: Allow
+          Principal:
+            Service:
+              - codebuild.amazonaws.com
+```
+
+Nous ajoutons un rôle pour le projet `CodeBuild` qui lancera les tests, en tant que ressource `CloudFormation`, dans le fichier `./infra/pipeline-cfn.yml`. Il s'agit du même rôle que le projet `CodeBuild` qui s'occupe strictement du build, avec les mêmes permissions. Pour le moment, on se contente de copier-coller, mais dans un prochain temps, on cherchera à factoriser les 2 ressources:
+
+```yaml
+StagingTestsRole:
+  Type: 'AWS::IAM::Role'
+  Description: IAM role for !Ref ApplicationName staging test (using CodeBuild)
+  Properties:
+    RoleName: !Join
+      - '-'
+      - - !Ref ApplicationName
+        - staging-test-role
+    Path: /
+    Policies:
+      - PolicyName: !Join
+          - '-'
+          - - !Ref ApplicationName
+            - staging-test-policy
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+                - s3:GetObjectVersion
+                - s3:GetBucketAcl
+                - s3:GetBucketLocation
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
+                - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
+            - Effect: Allow
+              Action:
+                - codebuild:CreateReportGroup
+                - codebuild:CreateReport
+                - codebuild:UpdateReport
+                - codebuild:BatchPutTestCases
+                - codebuild:BatchPutCodeCoverages
+              Resource: !Sub 'arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${ApplicationName}-*'
+    AssumeRolePolicyDocument:
+      Statement:
+        - Action: "sts:AssumeRole"
+          Effect: Allow
+          Principal:
+            Service:
+              - codebuild.amazonaws.com
+```
+
+On ajoute la ressource `CodeBuild`, chargée d'éxécuter les tests:
+
+```yaml
+StagingTest:
+  Type: AWS::CodeBuild::Project
+  Properties:
+    Name: !Join
+      - '-'
+      - - !Ref ApplicationName
+        - staging-test
+    Description: A build project for !Ref ApplicationName
+    ServiceRole: !Ref BuildProjectRole
+    Artifacts:
+      Type: CODEPIPELINE
+      Packaging: ZIP
+    Environment:
+      Type: LINUX_CONTAINER
+      ComputeType: BUILD_GENERAL1_SMALL
+      Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+      EnvironmentVariables:
+        - Name: REST_ENDPOINT_HOSTNAME
+          Type: PLAINTEXT
+#            Value: "toto"
+          Value: !ImportValue Ec2InstancePublicDnsName
+        - Name: REST_ENDPOINT_PROTOCOL
+          Type: PLAINTEXT
+          Value: 'http'
+        - Name: REST_ENDPOINT_PORT
+          Type: PLAINTEXT
+          Value: '8080'
+    Cache:
+      Type: S3
+      Location: !Sub '${S3Bucket}/maven-cache'
+    Source:
+      Type: CODEPIPELINE
+      BuildSpec: |
+        version: 0.2
+        phases:
+          install:
+            runtime-versions:
+              java: corretto11
+          build:
+            commands:
+              - mvn test -Dtest=CucumberRunnerStaging
+        reports:
+          Report:
+            files:
+              - 'target/cucumber-reports/staging/cucumber-staging-results.xml'
+        cache:
+          paths:
+            - '/root/.m2/**/*'
+```
+
+Ici aussi, il s'agit de la même ressource que pour le build, mais l'on a changé le buildspec. On pourra factoriser cette duplication dans un second temps.
+
+Enfin, toujours dans le template `CloudFormation`, nous ajoutons l'action de test dans la pipeline et nous ajoutons un ordre entre les actions pour s'assurer que le test se déroule après le déploiement:
+
+```yaml
+- Name: Deploy
+  Actions:
+    - Name: Deploy
+      RunOrder: 1
+      # [...]
+    - Name: StagingTest
+      RunOrder: 2
+      InputArtifacts:
+          - Name: SourceOutput
+      ActionTypeId:
+        Category: Build
+        Owner: AWS
+        Version: 1
+        Provider: CodeBuild
+      Configuration:
+        ProjectName:
+          Ref: StagingTest
+```
+
+Avec une visualisation du diff pour plus de clareté:
+
+![](images/6.2-staging-tests.png)
+
+Enfin, on réordonne les sub-targets de la target `all` du `Makefile`, `execution-environment` devant s'éxécuter avant, car le template utilisé dans la target `pipeline` utilise une sortie `CloudFormation` exportée par le template utilisé dans `execution-environment`.
+
+
+##### <a name="2.6.4-maj-infra-execution-pipeline"></a> 6.4 Mise à jour de l'infra et éxécution de la pipeline
+
+Mettons à jour notre infra:
+
+```shell
+cd infra #si vous n'y êtes pas deja
+make all APPLICATION_NAME=my-app
+```
+
+Si jamais vous avec un problème,
+
+```shell
+cd infra #si vous n'y êtes pas deja
+make delete-all APPLICATION_NAME=my-app # en pensant à rajouter le correctif pour supprimer TOUTES les targets
+# puis activer la connexion github 
+```
+
+Ensuite, poussez le code et relancez une release dans la pipeline si ce n'est pas fait automatiquement:
+
+Celle-ci devrait être verte, ici un screenshot focalisé sur le stage `Deploy`:
+
+![](images/6.4-staging-tests.png)
+
+Allons regarder le projet `CodeBuild` de ces tests:
+
+![](images/6.5-staging-tests.png)
+
+Maintenant le rapport de tests:
+
+![](images/6.6-staging-tests.png)
+
+Et la sortie du test:
+
+![](images/6.7-staging-tests.png)
+
+Parfait !
+Nous pouvons passer à la prochaine étape, à savoir: rajouter une instance EC2 que l'on définira comme notre "prod", et redéfinir notre instance existante comme notre "staging"
 
 ## <a name="references"></a> Références
 - code source github: [https://github.com/mbimbij/codebuild-test-report-demo](https://github.com/mbimbij/codebuild-test-report-demo)
