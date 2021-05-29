@@ -8,6 +8,9 @@ Parameters:
   AmiId:
     Type: AWS::EC2::Image::Id
     Description: Ami Id
+  Environment:
+    Type: String
+    Description: Environment (staging, prod, ...)
 
 Resources:
   Ec2SecurityGroup:
@@ -34,9 +37,11 @@ Resources:
       IamInstanceProfile: !Ref Ec2InstanceProfile
       Tags:
         - Key: Name
-          Value: !Sub '${ApplicationName}-instance'
+          Value: !Sub '${ApplicationName}-${Environment}-instance'
         - Key: Application
           Value: !Sub '${ApplicationName}'
+        - Key: Environment
+          Value: !Sub '${Environment}'
   Ec2InstanceProfile:
     Type: "AWS::IAM::InstanceProfile"
     Properties:
@@ -49,7 +54,7 @@ Resources:
       RoleName: !Join
         - '-'
         - - !Ref ApplicationName
-          - ec2-instance-role
+          - !Sub '${Environment}-ec2-instance-role'
       AssumeRolePolicyDocument:
         Statement:
           - Action: "sts:AssumeRole"
@@ -66,4 +71,4 @@ Outputs:
       - Ec2Instance
       - PublicDnsName
     Export:
-      Name: Ec2InstancePublicDnsName
+      Name: !Sub '${Environment}-Ec2InstancePublicDnsName'

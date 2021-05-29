@@ -29,6 +29,7 @@ Dans cette article, nous allons enrichir notre pipeline et déployer l'applicati
   * [4. Intégration d'une interface REST au code Java - `SpringBoot`](#2.4-java-springboot-rest-interface)
   * [5. Déploiement de l'application Java en tant que service `SystemD`](#2.5-deploy-java-application-as-service)
   * [6. Test "d'intégration" sur notre environnement EC2](#2.6-staging-tests-post-deploy)
+  * [7. Ajout d'un environnement de "prod"](#2.7-add-prod-environment)
 - [Références](#references)
 
 
@@ -1280,6 +1281,418 @@ Et la sortie du test:
 Parfait !
 Nous pouvons passer à la prochaine étape, à savoir: rajouter une instance EC2 que l'on définira comme notre "prod", et redéfinir notre instance existante comme notre "staging"
 
+#### <a name="2.7-add-prod-environment"></a> 7. Ajout d'un environnement de "prod"
+
+tag de départ: `2.6-staging-tests-post-deploy`
+tag d'arrivée: `2.7-add-prod-environment`
+
+Dans cette partie nous allons:
+- Rajouter un environnement que l'on définira comme notre "production", et déployer dessus avec 
+  - validation manuelle avant
+  - test automatisé après
+- Redéfinir notre environnement actuel comme "staging"
+
+##### <a name="2.7.1-add-prod-environment"></a> 7.1 Générification de la création d'environnement
+
+Nous allons utiliser le même template `CloudFormation`, et le script shell associé pour créer à la fois notre environnement de "production", et l'environnement actuel que l'on va requalifier en "staging"
+
+Tout d'abord, nous renommons `execution-environment` en `XX-environment`, où `XX` vaut `staging` ou `production`.
+Nous commençons donc par modifier le template `CloudFormation`, renommé en `./infra/environment-cfn.yml` :
+
+```yaml
+Parameters:
+  # [...] 
+  Environment:
+    Type: String
+    Description: Environment (staging, prod, ...)
+
+Resources:
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    # [...] 
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ApplicationName}-${Environment}-instance'
+  Ec2InstanceRole:
+    Properties:
+      RoleName: !Join
+        - '-'
+        - - !Ref ApplicationName
+          - !Sub '${Environment}-ec2-instance-role'
+    # [...] 
+Outputs:
+  Ec2InstancePublicDnsName:
+    Value: !GetAtt
+      - Ec2Instance
+      - PublicDnsName
+    Export:
+      Name: !Sub '${Environment}-Ec2InstancePublicDnsName'
+```
+
+Visualisons les différences:
+
+![](images/7.1-production-environment.png)
+
+On rajoute un paramètre `Environment`
+
+![](images/7.2-production-environment.png)
+
+1. On paramétrise le nom de l'instance
+2. On ajoute un tag spéciant l'environnment auquel appartient l'instance
+3. On paramétrise le nom du rôle associé au profile utilisé par l'instance
+4. On paramétrise la sortie exportée, pour être utilisée par la pipeline
+
+On renomme ensuite le script `./infra/create-execution-environment.sh` en `./infra/create-environment.sh`.
+Ensuite, on le modifie de la façon suivante:
+
+```shell
+#!/bin/bash
+
+if [[ "$#" -ne 5 ]]; then
+  echo -e "usage:\n./create-execution-environment.sh \$APPLICATION_NAME \$STACK_NAME \$AMI_ID \$KEY_NAME \$ENVIRONMENT"
+  exit 1
+fi
+
+APPLICATION_NAME=$1
+STACK_NAME=$2
+AMI_ID=$3
+KEY_NAME=$4
+ENVIRONMENT=$5
+
+echo -e "##############################################################################"
+echo -e "creating environment \"$ENVIRONMENT\""
+echo -e "##############################################################################"
+aws cloudformation deploy \
+  --stack-name $STACK_NAME \
+  --template-file environment-cfn.yml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    KeyName=$KEY_NAME \
+    AmiId=$AMI_ID \
+    ApplicationName=$APPLICATION_NAME \
+    Environment=$ENVIRONMENT
+```
+
+Le `Makefile` devient:
+
+```makefile
+SHELL := /bin/bash
+ifndef APPLICATION_NAME
+$(error APPLICATION_NAME is not set)
+endif
+include infra.env
+PIPELINE_STACK_NAME=$(APPLICATION_NAME)-pipeline
+STAGING_ENVIRONMENT_STACK_NAME=$(APPLICATION_NAME)-staging-environment
+PRODUCTION_ENVIRONMENT_STACK_NAME=$(APPLICATION_NAME)-production-environment
+
+all:
+	- $(MAKE) ami
+	- $(MAKE) staging-environment
+	- $(MAKE) production-environment
+	- $(MAKE) pipeline
+pipeline:
+	./create-pipeline.sh $(APPLICATION_NAME) $(PIPELINE_STACK_NAME) $(GITHUB_REPO) $(GITHUB_REPO_BRANCH)
+ami:
+	$(eval BASE_AMI_ID := $(shell aws ssm get-parameters --names /aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id --query 'Parameters[0].[Value]' --output text))
+	$(eval AWS_REGION := $(shell aws configure get region))
+	./create-ami.sh $(APPLICATION_NAME) $(BASE_AMI_ID) $(AWS_REGION)
+ssh-key-pair:
+	./create-ssh-key-pair.sh $(SSH_KEY_NAME) $(SSH_KEY_PATH)
+staging-environment: ssh-key-pair
+	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
+	./create-environment.sh $(APPLICATION_NAME) $(STAGING_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) staging
+production-environment: ssh-key-pair
+	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
+	./create-environment.sh $(APPLICATION_NAME) $(PRODUCTION_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) production
+
+
+delete-all:
+	- $(MAKE) delete-pipeline
+	- $(MAKE) delete-staging-environment
+	- $(MAKE) delete-production-environment
+	- $(MAKE) delete-ami
+delete-pipeline:
+	./delete-stack-wait-termination.sh $(PIPELINE_STACK_NAME)
+delete-ami:
+	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
+	aws ec2 deregister-image --image-id $(AMI_ID)
+delete-ssh-key-pair:
+	aws ec2 delete-key-pair --key-name $(SSH_KEY_NAME)
+delete-staging-environment: delete-ssh-key-pair
+	./delete-stack-wait-termination.sh $(STAGING_ENVIRONMENT_STACK_NAME)
+delete-production-environment: delete-ssh-key-pair
+	./delete-stack-wait-termination.sh $(PRODUCTION_ENVIRONMENT_STACK_NAME)
+
+```
+
+Et voici le diff:
+
+![](images/7.3-production-environment.png)
+
+##### <a name="2.7.2-add-prod-environment"></a> 7.2 Ajout du stage de déploiement en production à la pipeline
+
+Au niveau du fichier `./infra/pipeline-cfn.yml`, nous rajoutons/modifions:
+
+- 1. la ressource `PipelineRole`, de manière à:
+  - 1.1 lui permettre de déclencher le test automatisé sur l'environnement de production
+  
+```yaml
+- Effect: Allow
+  Action:
+    - codebuild:BatchGetBuilds
+    - codebuild:StartBuild
+    - codebuild:BatchGetBuildBatches
+    - codebuild:StartBuildBatch
+  Resource:
+    - !GetAtt
+      - BuildProject
+      - Arn
+    - !GetAtt
+      - StagingTest
+      - Arn
+    - !GetAtt
+      - ProductionTest
+      - Arn
+```
+
+  - 1.2 la ressource `CodeDeployDeploymentGroup`, que l'on renomme en `StagingDeploymentGroup`, et dont on modifie les tags des instances à cibler, de manière à ne déployer l'application que sur l'environnement qui nous intéresse:
+
+```yaml
+StagingDeploymentGroup:
+  Type: AWS::CodeDeploy::DeploymentGroup
+  Properties:
+    ApplicationName: !Ref CodeDeployApplication
+    ServiceRoleArn: !GetAtt
+      - CodeDeployRole
+      - Arn
+    DeploymentGroupName: !Sub '${ApplicationName}-staging-deployment-group'
+    DeploymentConfigName: CodeDeployDefault.OneAtATime
+    Ec2TagSet:
+      Ec2TagSetList:
+        - Ec2TagGroup:
+          - Key: Application
+            Value: !Ref ApplicationName
+            Type: KEY_AND_VALUE
+        - Ec2TagGroup:
+          - Key: Environment
+            Value: staging
+            Type: KEY_AND_VALUE
+```
+
+Regardons le diff:
+
+![](images/7.4-production-environment.png)
+
+pour (3), voir la documentation pour la configuration du tagging avec `CodeDeploy`: [https://docs.amazonaws.cn/en_us/codedeploy/latest/userguide/instances-tagging.html#instances-tagging-example-3](https://docs.amazonaws.cn/en_us/codedeploy/latest/userguide/instances-tagging.html#instances-tagging-example-3)
+
+  - 1.3 On ajoute un groupe de déploiement `ProductionDeploymentGroup` pour déployer l'application en prod:
+
+```yaml
+ProductionDeploymentGroup:
+  Type: AWS::CodeDeploy::DeploymentGroup
+  Properties:
+    ApplicationName: !Ref CodeDeployApplication
+    ServiceRoleArn: !GetAtt
+      - CodeDeployRole
+      - Arn
+    DeploymentGroupName: !Sub '${ApplicationName}-production-deployment-group'
+    DeploymentConfigName: CodeDeployDefault.OneAtATime
+    Ec2TagSet:
+      Ec2TagSetList:
+        - Ec2TagGroup:
+          - Key: Application
+            Value: !Ref ApplicationName
+            Type: KEY_AND_VALUE
+        - Ec2TagGroup:
+          - Key: Environment
+            Value: production
+            Type: KEY_AND_VALUE
+```
+
+  - 1.4 On ajoute un rôle pour le projet `CodeBuild` qui va éxécuter les tests en production. Il s'agit d'un copier-coller du rôle dédié aux tests en staging. On éliminera cette duplication dans un prochain temps:
+
+```yaml
+ProductionTestsRole:
+  Type: 'AWS::IAM::Role'
+  Description: IAM role for !Ref ApplicationName staging test (using CodeBuild)
+  Properties:
+    RoleName: !Join
+      - '-'
+      - - !Ref ApplicationName
+        - production-test-role
+    Path: /
+    Policies:
+      - PolicyName: !Join
+          - '-'
+          - - !Ref ApplicationName
+            - production-test-policy
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+                - s3:GetObjectVersion
+                - s3:GetBucketAcl
+                - s3:GetBucketLocation
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
+                - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
+            - Effect: Allow
+              Action:
+                - codebuild:CreateReportGroup
+                - codebuild:CreateReport
+                - codebuild:UpdateReport
+                - codebuild:BatchPutTestCases
+                - codebuild:BatchPutCodeCoverages
+              Resource: !Sub 'arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${ApplicationName}-*'
+    AssumeRolePolicyDocument:
+      Statement:
+        - Action: "sts:AssumeRole"
+          Effect: Allow
+          Principal:
+            Service:
+              - codebuild.amazonaws.com
+```
+  - 1.5 On ajoute une ressource `CodeBuild` pour effectuer les tests sur l'environnement de prod:
+
+```yaml
+ProductionTest:
+  Type: AWS::CodeBuild::Project
+  Properties:
+    Name: !Join
+      - '-'
+      - - !Ref ApplicationName
+        - production-test
+    Description: A build project for !Ref ApplicationName
+    ServiceRole: !Ref BuildProjectRole
+    Artifacts:
+      Type: CODEPIPELINE
+      Packaging: ZIP
+    Environment:
+      Type: LINUX_CONTAINER
+      ComputeType: BUILD_GENERAL1_SMALL
+      Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+      EnvironmentVariables:
+        - Name: REST_ENDPOINT_HOSTNAME
+          Type: PLAINTEXT
+          Value: !ImportValue 'production-Ec2InstancePublicDnsName'
+        - Name: REST_ENDPOINT_PROTOCOL
+          Type: PLAINTEXT
+          Value: 'http'
+        - Name: REST_ENDPOINT_PORT
+          Type: PLAINTEXT
+          Value: '8080'
+    Cache:
+      Type: S3
+      Location: !Sub '${S3Bucket}/maven-cache'
+    Source:
+      Type: CODEPIPELINE
+      BuildSpec: |
+        version: 0.2
+        phases:
+          install:
+            runtime-versions:
+              java: corretto11
+          build:
+            commands:
+              - mvn test -Dtest=CucumberRunnerStaging
+        reports:
+          Report:
+            files:
+              - 'target/cucumber-reports/staging/cucumber-staging-results.xml'
+        cache:
+          paths:
+            - '/root/.m2/**/*'
+```
+
+  - 1.6 On renomme le stage `Deploy` en `Staging`:
+
+![](images/7.5-production-environment.png)
+
+  - 1.7 On ajoute un stage `Production` avec les actions suivantes:
+    - approbation manuelle
+    - déploiement
+    - test
+
+```yaml
+- Name: Production
+  Actions:
+    - Name: ApproveDeployProd
+      RunOrder: 1
+      ActionTypeId:
+        Category: Approval
+        Owner: AWS
+        Version: 1
+        Provider: Manual
+      Configuration:
+        CustomData: "Perform all necessary manual tests and verifications on \"staging\" environment before approving."
+    - Name: Deploy
+      RunOrder: 2
+      InputArtifacts:
+        - Name: BuildOutput
+      ActionTypeId:
+        Category: Deploy
+        Owner: AWS
+        Version: 1
+        Provider: CodeDeploy
+      Configuration:
+        ApplicationName:
+          Ref: CodeDeployApplication
+        DeploymentGroupName:
+          Ref: ProductionDeploymentGroup
+    - Name: Test
+      RunOrder: 3
+      InputArtifacts:
+        - Name: SourceOutput
+      ActionTypeId:
+        Category: Build
+        Owner: AWS
+        Version: 1
+        Provider: CodeBuild
+      Configuration:
+        ProjectName:
+          Ref: ProductionTest
+```
+
+##### <a name="2.7.3-add-prod-environment"></a> Mise à jour de l'infra et de la pipeline
+
+Nous avons modifié une valeur exportée par la stack de l'environnement de staging, qui est importée dans la stack de la pipeline. Avant de pouvoir mettre à jour la stack de notre pipeline, il va nous falloir:
+- soit supprimer la stack de la pipeline, modifier la stack des environnements et recréer la stack de la pipeline
+- soit modifier la stack de la pipeline en mettant une valeur autre que l'import, modifier la stack des environnements et updater la stack de la pipeline avec la valeur importée, c'est à dire `!ImportValue 'staging-Ec2InstancePublicDnsName'`
+  - ex:
+  
+```yaml
+- Name: REST_ENDPOINT_HOSTNAME
+  Type: PLAINTEXT
+  Value: "toto"
+```
+
+Un fois cela fait, vous pouvez relancer un déploiement:
+
+![](images/7.6-production-environment.png)
+
+Vous pouvez aussi vous en convaincre avec un `curl`.
+
+On peut enfin jeter un oeil au rapport de test en production:
+
+![](images/7.7-production-environment.png)
+
+C'est tout pour cette partie, ce qui est deja pas mal.
+Rendez-vous dans la prochaine partie où nous remplacerons nos environnements par des groupes d'auto-scaling derrière un load balancer. 
+
+Nous introduirons aussi un VPC et des sous-réseaux publiques et privés.
+Jusqu'à présent nous tous les déploiements se faisaient dans le VPC par défaut, ce qui n'est pas mauvais pour commencer, mais pour autant que je sache, c'est un anti-pattern. 
+Ne serait-ce que parce-que nos instances sont accessibles depuis l'extérieur
+
 ## <a name="references"></a> Références
 - code source github: [https://github.com/mbimbij/codebuild-test-report-demo](https://github.com/mbimbij/codebuild-test-report-demo)
 - les hooks et le cycle de vie des déploiements sur EC2 / on-premises [https://docs.aws.amazon.com/codedeploy/latest/userguide/reference-appspec-file-structure-hooks.html#appspec-hooks-server](https://docs.aws.amazon.com/codedeploy/latest/userguide/reference-appspec-file-structure-hooks.html#appspec-hooks-server)
+- utilisation des tags pour les groupes de déploiement `CodeDeploy`: [https://docs.amazonaws.cn/en_us/codedeploy/latest/userguide/instances-tagging.html#instances-tagging-example-3](https://docs.amazonaws.cn/en_us/codedeploy/latest/userguide/instances-tagging.html#instances-tagging-example-3)

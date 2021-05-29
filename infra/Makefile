@@ -4,11 +4,13 @@ $(error APPLICATION_NAME is not set)
 endif
 include infra.env
 PIPELINE_STACK_NAME=$(APPLICATION_NAME)-pipeline
-EXECUTION_ENVIRONMENT_STACK_NAME=$(APPLICATION_NAME)-execution-environment
+STAGING_ENVIRONMENT_STACK_NAME=$(APPLICATION_NAME)-staging-environment
+PRODUCTION_ENVIRONMENT_STACK_NAME=$(APPLICATION_NAME)-production-environment
 
 all:
 	- $(MAKE) ami
-	- $(MAKE) execution-environment
+	- $(MAKE) staging-environment
+	- $(MAKE) production-environment
 	- $(MAKE) pipeline
 pipeline:
 	./create-pipeline.sh $(APPLICATION_NAME) $(PIPELINE_STACK_NAME) $(GITHUB_REPO) $(GITHUB_REPO_BRANCH)
@@ -18,14 +20,18 @@ ami:
 	./create-ami.sh $(APPLICATION_NAME) $(BASE_AMI_ID) $(AWS_REGION)
 ssh-key-pair:
 	./create-ssh-key-pair.sh $(SSH_KEY_NAME) $(SSH_KEY_PATH)
-execution-environment: ssh-key-pair
+staging-environment: ssh-key-pair
 	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
-	./create-execution-environment.sh $(APPLICATION_NAME) $(EXECUTION_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME)
+	./create-environment.sh $(APPLICATION_NAME) $(STAGING_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) staging
+production-environment: ssh-key-pair
+	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
+	./create-environment.sh $(APPLICATION_NAME) $(PRODUCTION_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) production
 
 
 delete-all:
 	- $(MAKE) delete-pipeline
-	- $(MAKE) delete-execution-environment
+	- $(MAKE) delete-staging-environment
+	- $(MAKE) delete-production-environment
 	- $(MAKE) delete-ami
 delete-pipeline:
 	./delete-stack-wait-termination.sh $(PIPELINE_STACK_NAME)
@@ -34,5 +40,7 @@ delete-ami:
 	aws ec2 deregister-image --image-id $(AMI_ID)
 delete-ssh-key-pair:
 	aws ec2 delete-key-pair --key-name $(SSH_KEY_NAME)
-delete-execution-environment: delete-ssh-key-pair
-	./delete-stack-wait-termination.sh $(EXECUTION_ENVIRONMENT_STACK_NAME)
+delete-staging-environment: delete-ssh-key-pair
+	./delete-stack-wait-termination.sh $(STAGING_ENVIRONMENT_STACK_NAME)
+delete-production-environment: delete-ssh-key-pair
+	./delete-stack-wait-termination.sh $(PRODUCTION_ENVIRONMENT_STACK_NAME)
