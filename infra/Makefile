@@ -27,11 +27,11 @@ ssh-key-pair:
 staging-environment: ssh-key-pair
 	- $(MAKE) ami
 	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
-	./create-environment.sh $(APPLICATION_NAME) $(STAGING_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) staging $(NETWORK_STACK_NAME)
+	./create-instance.sh $(APPLICATION_NAME) $(STAGING_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) staging $(NETWORK_STACK_NAME) PrivateSubnetA
 production-environment: ssh-key-pair
 	- $(MAKE) ami
 	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
-	./create-environment.sh $(APPLICATION_NAME) $(PRODUCTION_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) production $(NETWORK_STACK_NAME)
+	./create-instance.sh $(APPLICATION_NAME) $(PRODUCTION_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) production $(NETWORK_STACK_NAME) PrivateSubnetB
 network:
 	cd network; ./create-network.sh $(APPLICATION_NAME)
 
