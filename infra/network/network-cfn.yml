@@ -12,7 +12,7 @@ Resources:
     Properties:
       AvailabilityZone:
         !Select
-          - 1
+          - 0
           - Fn::GetAZs: !Ref AWS::Region
       CidrBlock: 10.0.0.0/24
       MapPublicIpOnLaunch: true
@@ -33,7 +33,31 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName}/PublicSubnetB'
       VpcId: !Ref VPC
-  Ec2SecurityGroup:
+  PrivateSubnetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone:
+        !Select
+        - 0
+        - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: 10.0.10.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/PrivateSubnetA'
+      VpcId: !Ref VPC
+  PrivateSubnetB:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone:
+        !Select
+        - 1
+        - Fn::GetAZs: !Ref AWS::Region
+      CidrBlock: 10.0.11.0/24
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/PrivateSubnetB'
+      VpcId: !Ref VPC
+  BastionHostSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: ec2 security group
@@ -47,7 +71,7 @@ Resources:
           FromPort: 8080
           ToPort: 8080
           CidrIp: 0.0.0.0/0
-  Ec2Instance:
+  BastionHost:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: ami-0d3f551818b21ed81
@@ -55,7 +79,7 @@ Resources:
       KeyName: local
       SubnetId: !Ref PublicSubnetA
       SecurityGroupIds:
-        - !Ref Ec2SecurityGroup
+        - !Ref BastionHostSecurityGroup
       Tags:
         - Key: Name
           Value: 'BastionHost'
@@ -90,6 +114,127 @@ Resources:
     Properties:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnetA
+  NATGatewayA:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt
+        - NATIPA
+        - AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/NATGatewayA'
+  NATIPA:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/NATIPA'
+  RouteTablePrivateSubnetA:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/RouteTablePrivateSubnetA'
+      VpcId: !Ref VPC
+  RoutePrivateSubnetA:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayA
+      RouteTableId: !Ref RouteTablePrivateSubnetA
+  RouteTableAssociationPrivateSubnetA:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateSubnetA
+      SubnetId: !Ref PrivateSubnetA
+  RouteTableAssociationPublicB:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+  NATGatewayB:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt
+        - NATIPB
+        - AllocationId
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/NATGatewayB'
+  NATIPB:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/NATIPB'
+  RouteTablePrivateSubnetB:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/RouteTablePrivateSubnetB'
+      VpcId: !Ref VPC
+  RoutePrivateSubnetB:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayB
+      RouteTableId: !Ref RouteTablePrivateSubnetB
+  RouteTableAssociationPrivateSubnetB:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateSubnetB
+      SubnetId: !Ref PrivateSubnetB
+
+  PrivateInstanceASecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ec2 security group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+  PrivateInstanceA:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0d3f551818b21ed81
+      InstanceType: t2.micro
+      KeyName: local
+      SubnetId: !Ref PrivateSubnetA
+      SecurityGroupIds:
+        - !Ref PrivateInstanceASecurityGroup
+      Tags:
+        - Key: Name
+          Value: 'PrivateInstanceA'
+
+  PrivateInstanceBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ec2 security group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+  PrivateInstanceB:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0d3f551818b21ed81
+      InstanceType: t2.micro
+      KeyName: local
+      SubnetId: !Ref PrivateSubnetB
+      SecurityGroupIds:
+        - !Ref PrivateInstanceBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: 'PrivateInstanceB'
 Outputs:
   VPC:
     Value: !Ref VPC
