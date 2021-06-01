@@ -11,12 +11,17 @@ Parameters:
   Environment:
     Type: String
     Description: Environment (staging, prod, ...)
+  NetworkStackName:
+    Type: String
+    Description: Networking Stack Name
 
 Resources:
   Ec2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: ec2 security group
+      VpcId:
+        Fn::ImportValue: !Sub '${NetworkStackName}::VPC'
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
@@ -32,9 +37,11 @@ Resources:
       ImageId: !Ref AmiId
       InstanceType: t2.micro
       KeyName: !Ref KeyName
-      SecurityGroups:
+      SecurityGroupIds:
         - !Ref Ec2SecurityGroup
       IamInstanceProfile: !Ref Ec2InstanceProfile
+      SubnetId:
+        Fn::ImportValue: !Sub '${NetworkStackName}::PrivateSubnetA'
       Tags:
         - Key: Name
           Value: !Sub '${ApplicationName}-${Environment}-instance'
@@ -65,10 +72,3 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-Outputs:
-  Ec2InstancePublicDnsName:
-    Value: !GetAtt
-      - Ec2Instance
-      - PublicDnsName
-    Export:
-      Name: !Sub '${Environment}-Ec2InstancePublicDnsName'
