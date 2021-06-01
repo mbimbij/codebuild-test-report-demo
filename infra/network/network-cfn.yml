@@ -190,51 +190,6 @@ Resources:
       RouteTableId: !Ref RouteTablePrivateSubnetB
       SubnetId: !Ref PrivateSubnetB
 
-  PrivateInstanceASecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: ec2 security group
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-  PrivateInstanceA:
-    Type: AWS::EC2::Instance
-    Properties:
-      ImageId: ami-0d3f551818b21ed81
-      InstanceType: t2.micro
-      KeyName: local
-      SubnetId: !Ref PrivateSubnetA
-      SecurityGroupIds:
-        - !Ref PrivateInstanceASecurityGroup
-      Tags:
-        - Key: Name
-          Value: 'PrivateInstanceA'
-
-  PrivateInstanceBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: ec2 security group
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-  PrivateInstanceB:
-    Type: AWS::EC2::Instance
-    Properties:
-      ImageId: ami-0d3f551818b21ed81
-      InstanceType: t2.micro
-      KeyName: local
-      SubnetId: !Ref PrivateSubnetB
-      SecurityGroupIds:
-        - !Ref PrivateInstanceBSecurityGroup
-      Tags:
-        - Key: Name
-          Value: 'PrivateInstanceB'
 Outputs:
   VPC:
     Value: !Ref VPC
