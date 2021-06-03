@@ -23,7 +23,7 @@ pipeline:
 	./create-pipeline.sh $(APPLICATION_NAME) $(PIPELINE_STACK_NAME) $(GITHUB_REPO) $(GITHUB_REPO_BRANCH) $(NETWORK_STAGING_STACK_NAME) $(STAGING_ENVIRONMENT_DNS)
 ami:
 	$(eval BASE_AMI_ID := $(shell aws ssm get-parameters --names /aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id --query 'Parameters[0].[Value]' --output text))
-	./create-ami.sh $(APPLICATION_NAME) $(BASE_AMI_ID) $(AWS_REGION)
+	cd ami && ./create-ami.sh $(APPLICATION_NAME) $(BASE_AMI_ID) $(AWS_REGION)
 ssh-key-pair:
 	./create-ssh-key-pair.sh $(SSH_KEY_NAME) $(SSH_KEY_PATH)
 staging-instance: ssh-key-pair
