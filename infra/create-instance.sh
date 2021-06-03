@@ -18,7 +18,7 @@ echo -e "creating environment \"$ENVIRONMENT\""
 echo -e "##############################################################################"
 aws cloudformation deploy \
   --stack-name $STACK_NAME \
-  --template-file environment-cfn.yml \
+  --template-file instance-cfn.yml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     KeyName=$KEY_NAME \

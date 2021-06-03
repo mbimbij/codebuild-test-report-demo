@@ -75,3 +75,10 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+Outputs:
+  InstanceDns:
+    Value: !GetAtt
+      - Ec2Instance
+      - PrivateDnsName
+    Export:
+      Name: !Sub '${AWS::StackName}::InstancePrivateDns'
