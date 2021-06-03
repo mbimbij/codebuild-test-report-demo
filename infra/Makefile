@@ -56,17 +56,17 @@ delete-all-except-ami:
 	- $(MAKE) -j2 delete-instance-staging delete-instance-production
 	- $(MAKE) -j2 delete-network-staging delete-network-production
 delete-pipeline:
-	./delete-stack-wait-termination.sh $(PIPELINE_STACK_NAME)
+	./stack-deletion/delete-stack-wait-termination.sh $(PIPELINE_STACK_NAME)
 delete-ami:
 	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
 	aws ec2 deregister-image --image-id $(AMI_ID)
 delete-ssh-key-pair:
 	aws ec2 delete-key-pair --key-name $(SSH_KEY_NAME)
 delete-instance-staging: delete-ssh-key-pair
-	./delete-stack-wait-termination.sh $(STAGING_INSTANCE_STACK_NAME)
+	./stack-deletion/delete-stack-wait-termination.sh $(STAGING_INSTANCE_STACK_NAME)
 delete-instance-production: delete-ssh-key-pair
-	./delete-stack-wait-termination.sh $(PRODUCTION_INSTANCE_STACK_NAME)
+	./stack-deletion/delete-stack-wait-termination.sh $(PRODUCTION_INSTANCE_STACK_NAME)
 delete-network-staging:
-	./delete-stack-wait-termination.sh $(NETWORK_STAGING_STACK_NAME)
+	./stack-deletion/delete-stack-wait-termination.sh $(NETWORK_STAGING_STACK_NAME)
 delete-network-production:
-	./delete-stack-wait-termination.sh $(NETWORK_PRODUCTION_STACK_NAME)
+	./stack-deletion/delete-stack-wait-termination.sh $(NETWORK_PRODUCTION_STACK_NAME)
