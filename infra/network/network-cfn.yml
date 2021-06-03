@@ -148,30 +148,30 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
     DependsOn:
       - VPCGatewayAttachment
-  RouteTableAssociationPublicA:
+  RouteTableAssociationpublic1:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnet1
-  NATGatewayA:
+  NATGateway1:
     Type: 'AWS::EC2::NatGateway'
     Properties:
       AllocationId: !GetAtt
-        - NATIPA
+        - NATIP1
         - AllocationId
       SubnetId: !Ref PublicSubnet1
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}/NATGatewayA'
+          Value: !Sub '${AWS::StackName}/NATGateway1'
         - Key: Environment
           Value: !Ref Environment
-  NATIPA:
+  NATIP1:
     Type: 'AWS::EC2::EIP'
     Properties:
       Domain: vpc
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}/NATIPA'
+          Value: !Sub '${AWS::StackName}/NATIP1'
         - Key: Environment
           Value: !Ref Environment
   RouteTablePrivateSubnet1:
@@ -187,37 +187,37 @@ Resources:
     Type: 'AWS::EC2::Route'
     Properties:
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NATGatewayA
+      NatGatewayId: !Ref NATGateway1
       RouteTableId: !Ref RouteTablePrivateSubnet1
   RouteTableAssociationPrivateSubnet1:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
       RouteTableId: !Ref RouteTablePrivateSubnet1
       SubnetId: !Ref PrivateSubnet1
-  RouteTableAssociationPublicB:
+  RouteTableAssociationpublic2:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'
     Properties:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnet2
-  NATGatewayB:
+  NATGateway2:
     Type: 'AWS::EC2::NatGateway'
     Properties:
       AllocationId: !GetAtt
-        - NATIPB
+        - NATIP2
         - AllocationId
       SubnetId: !Ref PublicSubnet2
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}/NATGatewayB'
+          Value: !Sub '${AWS::StackName}/NATGateway2'
         - Key: Environment
           Value: !Ref Environment
-  NATIPB:
+  NATIP2:
     Type: 'AWS::EC2::EIP'
     Properties:
       Domain: vpc
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}/NATIPB'
+          Value: !Sub '${AWS::StackName}/NATIP2'
         - Key: Environment
           Value: !Ref Environment
   RouteTablePrivateSubnet2:
@@ -233,7 +233,7 @@ Resources:
     Type: 'AWS::EC2::Route'
     Properties:
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NATGatewayB
+      NatGatewayId: !Ref NATGateway2
       RouteTableId: !Ref RouteTablePrivateSubnet2
   RouteTableAssociationPrivateSubnet2:
     Type: 'AWS::EC2::SubnetRouteTableAssociation'

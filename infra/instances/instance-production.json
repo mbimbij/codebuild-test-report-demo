@@ -8,10 +8,6 @@
     "ParameterValue": "production"
   },
   {
-    "ParameterKey": "NetworkStackName",
-    "ParameterValue": "network-production"
-  },
-  {
     "ParameterKey": "SubnetName",
     "ParameterValue": "PrivateSubnet1"
   }

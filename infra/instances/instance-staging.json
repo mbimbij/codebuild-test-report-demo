@@ -8,10 +8,6 @@
     "ParameterValue": "staging"
   },
   {
-    "ParameterKey": "NetworkStackName",
-    "ParameterValue": "network-staging"
-  },
-  {
     "ParameterKey": "SubnetName",
     "ParameterValue": "PrivateSubnet1"
   }

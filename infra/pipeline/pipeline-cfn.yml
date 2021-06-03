@@ -8,10 +8,10 @@ Parameters:
   GithubRepoBranch:
     Type: String
     Description: Github source code branch
-  NetworkStackName:
+  NetworkStagingStackName:
     Type: String
-    Description: Networking Stack Name
-  StagingEnvironmentUrl:
+    Description: Networking Staging Stack Name
+  StagingEnvironmentDns:
     Type: String
     Description: Networking Stack Name
 
@@ -326,7 +326,7 @@ Resources:
         EnvironmentVariables:
           - Name: REST_ENDPOINT_HOSTNAME
             Type: PLAINTEXT
-            Value: !Ref StagingEnvironmentUrl
+            Value: !Ref StagingEnvironmentDns
           - Name: REST_ENDPOINT_PROTOCOL
             Type: PLAINTEXT
             Value: 'http'
@@ -338,11 +338,11 @@ Resources:
         Location: !Sub '${S3Bucket}/maven-cache'
       VpcConfig:
         SecurityGroupIds:
-          - !Ref PipelineSecurityGroup
+          - !Ref PipelineStagingTestSecurityGroup
         Subnets:
-          - Fn::ImportValue: !Sub '${NetworkStackName}::PrivateSubnetA'
+          - Fn::ImportValue: !Sub '${NetworkStagingStackName}::PrivateSubnet1'
         VpcId:
-          Fn::ImportValue: !Sub '${NetworkStackName}::VPC'
+          Fn::ImportValue: !Sub '${NetworkStagingStackName}::VPC'
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -361,12 +361,12 @@ Resources:
           cache:
             paths:
               - '/root/.m2/**/*'
-  PipelineSecurityGroup:
+  PipelineStagingTestSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: ec2 security group
       VpcId:
-        Fn::ImportValue: !Sub '${NetworkStackName}::VPC'
+        Fn::ImportValue: !Sub '${NetworkStagingStackName}::VPC'
 #  ProductionTestsRole:
 #    Type: 'AWS::IAM::Role'
 #    Description: IAM role for !Ref ApplicationName staging test (using CodeBuild)
