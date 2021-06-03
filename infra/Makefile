@@ -37,8 +37,10 @@ ssh-key-pair:
 	./ssh-key-pair/create-ssh-key-pair.sh $(SSH_KEY_NAME) $(SSH_KEY_PATH)
 instance-staging: ssh-key-pair
 	./instances/create-instance.sh $(APPLICATION_NAME) staging $(STAGING_INSTANCE_STACK_NAME) $(NETWORK_STAGING_STACK_NAME)
+	rm instances/instance-staging-processed.json || echo ""
 instance-production: ssh-key-pair
 	./instances/create-instance.sh $(APPLICATION_NAME) production $(PRODUCTION_INSTANCE_STACK_NAME) $(NETWORK_PRODUCTION_STACK_NAME)
+	rm instances/instance-production-processed.json || echo ""
 networks:
 	$(MAKE) -j2 network-staging network-production
 network-staging: ssh-key-pair
