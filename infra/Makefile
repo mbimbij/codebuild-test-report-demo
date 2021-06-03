@@ -10,7 +10,7 @@ NETWORK_STAGING_STACK_NAME=$(APPLICATION_NAME)-network-staging
 NETWORK_PRODUCTION_STACK_NAME=$(APPLICATION_NAME)-network-production
 AWS_REGION := $(shell aws configure get region)
 
-.PHONY: pipeline ami
+.PHONY: pipeline ami ssh-key-pair
 
 .IGNORE: ami
 
@@ -34,7 +34,7 @@ ami:
 	$(eval BASE_AMI_ID := $(shell aws ssm get-parameters --names /aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id --query 'Parameters[0].[Value]' --output text))
 	cd ami && ./create-ami.sh $(APPLICATION_NAME) $(BASE_AMI_ID) $(AWS_REGION)
 ssh-key-pair:
-	./create-ssh-key-pair.sh $(SSH_KEY_NAME) $(SSH_KEY_PATH)
+	./ssh-key-pair/create-ssh-key-pair.sh $(SSH_KEY_NAME) $(SSH_KEY_PATH)
 instance-staging: ssh-key-pair
 	./instances/create-instance.sh $(APPLICATION_NAME) staging $(STAGING_INSTANCE_STACK_NAME) $(NETWORK_STAGING_STACK_NAME)
 instance-production: ssh-key-pair
