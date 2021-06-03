@@ -1401,10 +1401,10 @@ ssh-key-pair:
 	./create-ssh-key-pair.sh $(SSH_KEY_NAME) $(SSH_KEY_PATH)
 staging-environment: ssh-key-pair
 	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
-	./create-environment.sh $(APPLICATION_NAME) $(STAGING_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) staging
+	./create-environment.sh $(APPLICATION_NAME) $(STAGING_INSTANCE_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) staging
 production-environment: ssh-key-pair
 	$(eval AMI_ID := $(shell aws ec2 describe-images --owners self --query "Images[?Name=='$(APPLICATION_NAME)'].ImageId" --output text))
-	./create-environment.sh $(APPLICATION_NAME) $(PRODUCTION_ENVIRONMENT_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) production
+	./create-environment.sh $(APPLICATION_NAME) $(PRODUCTION_INSTANCE_STACK_NAME) $(AMI_ID) $(SSH_KEY_NAME) production
 
 
 delete-all:
@@ -1420,9 +1420,9 @@ delete-ami:
 delete-ssh-key-pair:
 	aws ec2 delete-key-pair --key-name $(SSH_KEY_NAME)
 delete-staging-environment: delete-ssh-key-pair
-	./delete-stack-wait-termination.sh $(STAGING_ENVIRONMENT_STACK_NAME)
+	./delete-stack-wait-termination.sh $(STAGING_INSTANCE_STACK_NAME)
 delete-production-environment: delete-ssh-key-pair
-	./delete-stack-wait-termination.sh $(PRODUCTION_ENVIRONMENT_STACK_NAME)
+	./delete-stack-wait-termination.sh $(PRODUCTION_INSTANCE_STACK_NAME)
 
 ```
 
