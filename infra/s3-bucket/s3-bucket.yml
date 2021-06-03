@@ -10,4 +10,3 @@ Resources:
     Description: S3 bucket for pipeline artifacts
     Properties:
       BucketName: !Ref BucketName
-#      BucketName: !Sub '${AWS::Region}-${AWS::AccountId}-${ApplicationName}-bucket-pipeline'
