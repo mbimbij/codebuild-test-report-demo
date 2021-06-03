@@ -11,21 +11,22 @@ Parameters:
   NetworkStagingStackName:
     Type: String
     Description: Networking Staging Stack Name
+  NetworkProductionStackName:
+    Type: String
+    Description: Networking Production Stack Name
   StagingEnvironmentDns:
     Type: String
-    Description: Networking Stack Name
+    Description: Staging Environment Dns
+  ProductionEnvironmentDns:
+    Type: String
+    Description: Production Environment Dns
 
 Resources:
   S3Bucket:
     Type: 'AWS::S3::Bucket'
     Description: S3 bucket for pipeline artifacts
     Properties:
-      BucketName: !Join
-        - '-'
-        - - !Ref 'AWS::Region'
-          - !Ref 'AWS::AccountId'
-          - !Ref ApplicationName
-          - bucket-pipeline
+      BucketName: !Sub '${AWS::Region}-${AWS::AccountId}-${ApplicationName}-bucket-pipeline'
   GithubConnection:
     Type: AWS::CodeStarConnections::Connection
     Properties:
@@ -35,16 +36,9 @@ Resources:
     Type: 'AWS::IAM::Role'
     Description: IAM role for !Ref ApplicationName build resource
     Properties:
-      RoleName: !Join
-        - '-'
-        - - !Ref ApplicationName
-          - build-role
-      Path: /
+      RoleName: !Sub '${ApplicationName}-build-role'
       Policies:
-        - PolicyName: !Join
-            - '-'
-            - - !Ref ApplicationName
-              - build-policy
+        - PolicyName: !Sub '${ApplicationName}-build-policy'
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -82,16 +76,9 @@ Resources:
     Type: 'AWS::IAM::Role'
     Description: IAM role for !Ref ApplicationName pipeline resource
     Properties:
-      RoleName: !Join
-        - '-'
-        - - !Ref ApplicationName
-          - pipeline-role
-      Path: /
+      RoleName: !Sub '${ApplicationName}-pipeline-role'
       Policies:
-        - PolicyName: !Join
-            - '-'
-            - - !Ref ApplicationName
-              - pipeline-policy
+        - PolicyName: !Sub '${ApplicationName}-pipeline-policy'
           PolicyDocument:
             Statement:
               - Effect: Allow
@@ -116,15 +103,9 @@ Resources:
                   - codebuild:BatchGetBuildBatches
                   - codebuild:StartBuildBatch
                 Resource:
-                  - !GetAtt
-                    - BuildProject
-                    - Arn
-                  - !GetAtt
-                    - StagingTest
-                    - Arn
-#                  - !GetAtt
-#                    - ProductionTest
-#                    - Arn
+                  - !GetAtt [BuildProject, Arn]
+                  - !GetAtt StagingTest.Outputs.TestRunnerArn
+                  - !GetAtt ProductionTest.Outputs.TestRunnerArn
               - Effect: Allow
                 Action:
                   - codedeploy:*
@@ -144,10 +125,7 @@ Resources:
   BuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Join
-        - '-'
-        - - !Ref ApplicationName
-          - build-project
+      Name: !Sub '${ApplicationName}-build-project'
       Description: A build project for !Ref ApplicationName
       ServiceRole: !Ref BuildProjectRole
       Artifacts:
@@ -202,10 +180,7 @@ Resources:
     Type: 'AWS::IAM::Role'
     Description: IAM role for !Ref ApplicationName code deploy deployment group
     Properties:
-      RoleName: !Join
-        - '-'
-        - - !Ref ApplicationName
-          - deploy-role
+      RoleName: !Sub '${ApplicationName}-deploy-role'
       AssumeRolePolicyDocument:
         Statement:
           - Action: "sts:AssumeRole"
@@ -258,209 +233,44 @@ Resources:
             - Key: Environment
               Value: production
               Type: KEY_AND_VALUE
-  StagingTestsRole:
-    Type: 'AWS::IAM::Role'
-    Description: IAM role for !Ref ApplicationName staging test (using CodeBuild)
-    Properties:
-      RoleName: !Join
-        - '-'
-        - - !Ref ApplicationName
-          - staging-test-role
-      Path: /
-      Policies:
-        - PolicyName: !Join
-            - '-'
-            - - !Ref ApplicationName
-              - staging-test-policy
-          PolicyDocument:
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:PutObject
-                  - s3:GetObject
-                  - s3:GetObjectVersion
-                  - s3:GetBucketAcl
-                  - s3:GetBucketLocation
-                Resource:
-                  - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
-                  - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
-              - Effect: Allow
-                Action:
-                  - codebuild:CreateReportGroup
-                  - codebuild:CreateReport
-                  - codebuild:UpdateReport
-                  - codebuild:BatchPutTestCases
-                  - codebuild:BatchPutCodeCoverages
-                Resource: !Sub 'arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${ApplicationName}-*'
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonVPCFullAccess
-      AssumeRolePolicyDocument:
-        Statement:
-          - Action: "sts:AssumeRole"
-            Effect: Allow
-            Principal:
-              Service:
-                - codebuild.amazonaws.com
   StagingTest:
-    Type: AWS::CodeBuild::Project
+    Type: "AWS::CloudFormation::Stack"
     Properties:
-      Name: !Join
-        - '-'
-        - - !Ref ApplicationName
-          - staging-test
-      Description: A build project for !Ref ApplicationName
-      ServiceRole: !Ref StagingTestsRole
-      Artifacts:
-        Type: CODEPIPELINE
-        Packaging: ZIP
-      Environment:
-        Type: LINUX_CONTAINER
-        ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
-        EnvironmentVariables:
-          - Name: REST_ENDPOINT_HOSTNAME
-            Type: PLAINTEXT
-            Value: !Ref StagingEnvironmentDns
-          - Name: REST_ENDPOINT_PROTOCOL
-            Type: PLAINTEXT
-            Value: 'http'
-          - Name: REST_ENDPOINT_PORT
-            Type: PLAINTEXT
-            Value: '8080'
-      Cache:
-        Type: S3
-        Location: !Sub '${S3Bucket}/maven-cache'
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref PipelineStagingTestSecurityGroup
-        Subnets:
-          - Fn::ImportValue: !Sub '${NetworkStagingStackName}::PrivateSubnet1'
-        VpcId:
+      TemplateURL: 'integration-test-runner/integration-test-runner.yml'
+      Parameters:
+        ApplicationName:
+          Ref: ApplicationName
+        VPCID:
           Fn::ImportValue: !Sub '${NetworkStagingStackName}::VPC'
-      Source:
-        Type: CODEPIPELINE
-        BuildSpec: |
-          version: 0.2
-          phases:
-            install:
-              runtime-versions:
-                java: corretto11
-            build:
-              commands:
-                - mvn test -Dtest=CucumberRunnerStaging
-          reports:
-            Report:
-              files:
-                - 'target/cucumber-reports/staging/cucumber-staging-results.xml'
-          cache:
-            paths:
-              - '/root/.m2/**/*'
-  PipelineStagingTestSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
+        Environment: staging
+        SubnetID:
+          Fn::ImportValue: !Sub '${NetworkStagingStackName}::PrivateSubnet1'
+        S3Bucket:
+          Ref: S3Bucket
+        ApplicationEndpointDnsName:
+          Ref: StagingEnvironmentDns
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}::StagingTestRunner'
+  ProductionTest:
+    Type: "AWS::CloudFormation::Stack"
     Properties:
-      GroupDescription: ec2 security group
-      VpcId:
-        Fn::ImportValue: !Sub '${NetworkStagingStackName}::VPC'
-#  ProductionTestsRole:
-#    Type: 'AWS::IAM::Role'
-#    Description: IAM role for !Ref ApplicationName staging test (using CodeBuild)
-#    Properties:
-#      RoleName: !Join
-#        - '-'
-#        - - !Ref ApplicationName
-#          - production-test-role
-#      Path: /
-#      Policies:
-#        - PolicyName: !Join
-#            - '-'
-#            - - !Ref ApplicationName
-#              - production-test-policy
-#          PolicyDocument:
-#            Statement:
-#              - Effect: Allow
-#                Action:
-#                  - s3:PutObject
-#                  - s3:GetObject
-#                  - s3:GetObjectVersion
-#                  - s3:GetBucketAcl
-#                  - s3:GetBucketLocation
-#                Resource:
-#                  - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
-#                  - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
-#              - Effect: Allow
-#                Action:
-#                  - logs:CreateLogGroup
-#                  - logs:CreateLogStream
-#                  - logs:PutLogEvents
-#                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
-#              - Effect: Allow
-#                Action:
-#                  - codebuild:CreateReportGroup
-#                  - codebuild:CreateReport
-#                  - codebuild:UpdateReport
-#                  - codebuild:BatchPutTestCases
-#                  - codebuild:BatchPutCodeCoverages
-#                Resource: !Sub 'arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${ApplicationName}-*'
-#      AssumeRolePolicyDocument:
-#        Statement:
-#          - Action: "sts:AssumeRole"
-#            Effect: Allow
-#            Principal:
-#              Service:
-#                - codebuild.amazonaws.com
-#  ProductionTest:
-#    Type: AWS::CodeBuild::Project
-#    Properties:
-#      Name: !Join
-#        - '-'
-#        - - !Ref ApplicationName
-#          - production-test
-#      Description: A build project for !Ref ApplicationName
-#      ServiceRole: !Ref BuildProjectRole
-#      Artifacts:
-#        Type: CODEPIPELINE
-#        Packaging: ZIP
-#      Environment:
-#        Type: LINUX_CONTAINER
-#        ComputeType: BUILD_GENERAL1_SMALL
-#        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
-#        EnvironmentVariables:
-#          - Name: REST_ENDPOINT_HOSTNAME
-#            Type: PLAINTEXT
-#            Value: !ImportValue 'production-Ec2InstancePublicDnsName'
-#          - Name: REST_ENDPOINT_PROTOCOL
-#            Type: PLAINTEXT
-#            Value: 'http'
-#          - Name: REST_ENDPOINT_PORT
-#            Type: PLAINTEXT
-#            Value: '8080'
-#      Cache:
-#        Type: S3
-#        Location: !Sub '${S3Bucket}/maven-cache'
-#      Source:
-#        Type: CODEPIPELINE
-#        BuildSpec: |
-#          version: 0.2
-#          phases:
-#            install:
-#              runtime-versions:
-#                java: corretto11
-#            build:
-#              commands:
-#                - mvn test -Dtest=CucumberRunnerStaging
-#          reports:
-#            Report:
-#              files:
-#                - 'target/cucumber-reports/staging/cucumber-staging-results.xml'
-#          cache:
-#            paths:
-#              - '/root/.m2/**/*'
+      TemplateURL: 'integration-test-runner/integration-test-runner.yml'
+      Parameters:
+        ApplicationName:
+          Ref: ApplicationName
+        VPCID:
+          Fn::ImportValue: !Sub '${NetworkProductionStackName}::VPC'
+        Environment: production
+        SubnetID:
+          Fn::ImportValue: !Sub '${NetworkProductionStackName}::PrivateSubnet1'
+        S3Bucket:
+          Ref: S3Bucket
+        ApplicationEndpointDnsName:
+          Ref: ProductionEnvironmentDns
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}::ProductionTestRunner'
   Pipeline:
     Description: Creating a deployment pipeline for !Ref ApplicationName project in AWS CodePipeline
     Type: 'AWS::CodePipeline::Pipeline'
@@ -528,8 +338,7 @@ Resources:
                 Version: 1
                 Provider: CodeBuild
               Configuration:
-                ProjectName:
-                  Ref: StagingTest
+                ProjectName: !GetAtt StagingTest.Outputs.TestRunnerName
         - Name: Production
           Actions:
             - Name: ApproveDeployProd
@@ -555,15 +364,14 @@ Resources:
                   Ref: CodeDeployApplication
                 DeploymentGroupName:
                   Ref: ProductionDeploymentGroup
-#            - Name: Test
-#              RunOrder: 3
-#              InputArtifacts:
-#                - Name: SourceOutput
-#              ActionTypeId:
-#                Category: Build
-#                Owner: AWS
-#                Version: 1
-#                Provider: CodeBuild
-#              Configuration:
-#                ProjectName:
-#                  Ref: ProductionTest
+            - Name: Test
+              RunOrder: 3
+              InputArtifacts:
+                - Name: SourceOutput
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !GetAtt ProductionTest.Outputs.TestRunnerName

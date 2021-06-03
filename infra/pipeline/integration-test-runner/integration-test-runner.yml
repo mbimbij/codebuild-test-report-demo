@@ -1,0 +1,124 @@
+Parameters:
+  ApplicationName:
+    Type: String
+    Description: Application Name
+  Environment:
+    Type: String
+    Description: Environment
+  VPCID:
+    Type: String
+    Description: VPC ID
+  SubnetID:
+    Type: String
+    Description: Subnet ID
+  S3Bucket:
+    Type: String
+    Description: S3 Bucket
+  ApplicationEndpointDnsName:
+    Type: String
+    Description: ApplicationEndpointDnsName
+Resources:
+  TestRunnerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ec2 security group
+      VpcId: !Ref VPCID
+  TestRunnerRole:
+    Type: 'AWS::IAM::Role'
+    Description: IAM role for !Ref ApplicationName !Ref Environment test (using CodeBuild)
+    Properties:
+      RoleName: !Sub '${ApplicationName}-${Environment}-test-role'
+      Policies:
+        - PolicyName: !Sub '${ApplicationName}-${Environment}-test-policy'
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketAcl
+                  - s3:GetBucketLocation
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*'
+              - Effect: Allow
+                Action:
+                  - codebuild:CreateReportGroup
+                  - codebuild:CreateReport
+                  - codebuild:UpdateReport
+                  - codebuild:BatchPutTestCases
+                  - codebuild:BatchPutCodeCoverages
+                Resource: !Sub 'arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${ApplicationName}-${Environment}*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonVPCFullAccess
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+  TestRunner:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub '${ApplicationName}-${Environment}-test-runner'
+      Description: A build project for !Ref ApplicationName !Ref Environment
+      ServiceRole: !Ref TestRunnerRole
+      Artifacts:
+        Type: CODEPIPELINE
+        Packaging: ZIP
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        EnvironmentVariables:
+          - Name: REST_ENDPOINT_HOSTNAME
+            Type: PLAINTEXT
+            Value: !Ref ApplicationEndpointDnsName
+          - Name: REST_ENDPOINT_PROTOCOL
+            Type: PLAINTEXT
+            Value: 'http'
+          - Name: REST_ENDPOINT_PORT
+            Type: PLAINTEXT
+            Value: '8080'
+      Cache:
+        Type: S3
+        Location: !Sub '${S3Bucket}/maven-cache'
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref TestRunnerSecurityGroup
+        Subnets:
+          - !Ref SubnetID
+        VpcId: !Ref VPCID
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                java: corretto11
+            build:
+              commands:
+                - mvn test -Dtest=CucumberRunnerStaging
+          reports:
+            Report:
+              files:
+                - 'target/cucumber-reports/staging/cucumber-staging-results.xml'
+          cache:
+            paths:
+              - '/root/.m2/**/*'
+Outputs:
+  TestRunnerName:
+    Description: Name of the CodeBuild resource
+    Value: !Ref TestRunner
+  TestRunnerArn:
+    Description: Name of the CodeBuild resource
+    Value: !GetAtt [TestRunner, Arn]

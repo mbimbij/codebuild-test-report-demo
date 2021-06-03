@@ -4,8 +4,8 @@ $(error APPLICATION_NAME is not set)
 endif
 include infra.env
 PIPELINE_STACK_NAME=$(APPLICATION_NAME)-pipeline
-STAGING_INSTANCE_STACK_NAME=$(APPLICATION_NAME)-instance-staging
-PRODUCTION_INSTANCE_STACK_NAME=$(APPLICATION_NAME)-instance-production
+INSTANCE_STAGING_STACK_NAME=$(APPLICATION_NAME)-instance-staging
+INSTANCE_PRODUCTION_STACK_NAME=$(APPLICATION_NAME)-instance-production
 NETWORK_STAGING_STACK_NAME=$(APPLICATION_NAME)-network-staging
 NETWORK_PRODUCTION_STACK_NAME=$(APPLICATION_NAME)-network-production
 AWS_REGION := $(shell aws configure get region)
@@ -19,27 +19,31 @@ all:
 	$(MAKE) -j2 instance-staging instance-production
 	$(MAKE) pipeline
 pipeline:
-	$(eval STAGING_ENVIRONMENT_DNS := $(shell aws cloudformation list-exports --region $(AWS_REGION) --query "Exports[?Name=='$(STAGING_INSTANCE_STACK_NAME)::InstancePrivateDns'].Value" --output text))
+	aws cloudformation package --template-file pipeline/pipeline-cfn.yml --output-template pipeline/pipeline-cfn-packaged.yml --s3-bucket cf-templates-1eftzhkxftl4x-eu-west-3
+	$(eval STAGING_ENVIRONMENT_DNS := $(shell aws cloudformation list-exports --region $(AWS_REGION) --query "Exports[?Name=='$(INSTANCE_STAGING_STACK_NAME)::InstancePrivateDns'].Value" --output text))
+	$(eval PRODUCTION_ENVIRONMENT_DNS := $(shell aws cloudformation list-exports --region $(AWS_REGION) --query "Exports[?Name=='$(INSTANCE_PRODUCTION_STACK_NAME)::InstancePrivateDns'].Value" --output text))
 	aws cloudformation deploy    \
       --stack-name $(PIPELINE_STACK_NAME)   \
-      --template-file pipeline/pipeline-cfn.yml    \
+      --template-file pipeline/pipeline-cfn-packaged.yml    \
       --capabilities CAPABILITY_NAMED_IAM   \
       --parameter-overrides     \
         ApplicationName=$(APPLICATION_NAME)   \
         GithubRepo=$(GITHUB_REPO)   \
         GithubRepoBranch=$(GITHUB_REPO_BRANCH) \
         NetworkStagingStackName=$(NETWORK_STAGING_STACK_NAME) \
-        StagingEnvironmentDns=$(STAGING_ENVIRONMENT_DNS)
+        NetworkProductionStackName=$(NETWORK_PRODUCTION_STACK_NAME) \
+        StagingEnvironmentDns=$(STAGING_ENVIRONMENT_DNS) \
+        ProductionEnvironmentDns=$(PRODUCTION_ENVIRONMENT_DNS)
 ami:
 	$(eval BASE_AMI_ID := $(shell aws ssm get-parameters --names /aws/service/canonical/ubuntu/server/20.04/stable/current/amd64/hvm/ebs-gp2/ami-id --query 'Parameters[0].[Value]' --output text))
 	cd ami && ./create-ami.sh $(APPLICATION_NAME) $(BASE_AMI_ID) $(AWS_REGION)
 ssh-key-pair:
 	./ssh-key-pair/create-ssh-key-pair.sh $(SSH_KEY_NAME) $(SSH_KEY_PATH)
 instance-staging: ssh-key-pair
-	./instances/create-instance.sh $(APPLICATION_NAME) staging $(STAGING_INSTANCE_STACK_NAME) $(NETWORK_STAGING_STACK_NAME)
+	./instances/create-instance.sh $(APPLICATION_NAME) staging $(INSTANCE_STAGING_STACK_NAME) $(NETWORK_STAGING_STACK_NAME)
 	rm instances/instance-staging-processed.json || echo ""
 instance-production: ssh-key-pair
-	./instances/create-instance.sh $(APPLICATION_NAME) production $(PRODUCTION_INSTANCE_STACK_NAME) $(NETWORK_PRODUCTION_STACK_NAME)
+	./instances/create-instance.sh $(APPLICATION_NAME) production $(INSTANCE_PRODUCTION_STACK_NAME) $(NETWORK_PRODUCTION_STACK_NAME)
 	rm instances/instance-production-processed.json || echo ""
 networks:
 	$(MAKE) -j2 network-staging network-production
@@ -65,9 +69,9 @@ delete-ami:
 delete-ssh-key-pair:
 	aws ec2 delete-key-pair --key-name $(SSH_KEY_NAME)
 delete-instance-staging: delete-ssh-key-pair
-	./stack-deletion/delete-stack-wait-termination.sh $(STAGING_INSTANCE_STACK_NAME)
+	./stack-deletion/delete-stack-wait-termination.sh $(INSTANCE_STAGING_STACK_NAME)
 delete-instance-production: delete-ssh-key-pair
-	./stack-deletion/delete-stack-wait-termination.sh $(PRODUCTION_INSTANCE_STACK_NAME)
+	./stack-deletion/delete-stack-wait-termination.sh $(INSTANCE_PRODUCTION_STACK_NAME)
 delete-network-staging:
 	./stack-deletion/delete-stack-wait-termination.sh $(NETWORK_STAGING_STACK_NAME)
 delete-network-production:
