@@ -20,13 +20,11 @@ Parameters:
   ProductionEnvironmentDns:
     Type: String
     Description: Production Environment Dns
+  S3Bucket:
+    Type: String
+    Description: S3 Bucket
 
 Resources:
-  S3Bucket:
-    Type: 'AWS::S3::Bucket'
-    Description: S3 bucket for pipeline artifacts
-    Properties:
-      BucketName: !Sub '${AWS::Region}-${AWS::AccountId}-${ApplicationName}-bucket-pipeline'
   GithubConnection:
     Type: AWS::CodeStarConnections::Connection
     Properties:

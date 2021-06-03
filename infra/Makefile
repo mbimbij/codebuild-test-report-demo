@@ -9,17 +9,27 @@ INSTANCE_PRODUCTION_STACK_NAME=$(APPLICATION_NAME)-instance-production
 NETWORK_STAGING_STACK_NAME=$(APPLICATION_NAME)-network-staging
 NETWORK_PRODUCTION_STACK_NAME=$(APPLICATION_NAME)-network-production
 AWS_REGION := $(shell aws configure get region)
+AWS_ACCOUNT_ID := $(shell aws sts get-caller-identity --query "Account" --output text)
+S3_BUCKET_NAME=$(AWS_REGION)-$(AWS_ACCOUNT_ID)-$(APPLICATION_NAME)-bucket
+S3_BUCKET_STACK_NAME=$(APPLICATION_NAME)-bucket
 
-.PHONY: pipeline ami ssh-key-pair
+.PHONY: pipeline ami ssh-key-pair s3-bucket
 
 .IGNORE: ami
 
 all:
+	$(MAKE) s3-bucket
 	$(MAKE) -j3 ami network-staging network-production
 	$(MAKE) -j2 instance-staging instance-production
 	$(MAKE) pipeline
-pipeline:
-	aws cloudformation package --template-file pipeline/pipeline-cfn.yml --output-template pipeline/pipeline-cfn-packaged.yml --s3-bucket cf-templates-1eftzhkxftl4x-eu-west-3
+s3-bucket:
+	aws cloudformation deploy    \
+          --stack-name $(S3_BUCKET_STACK_NAME)   \
+          --template-file s3-bucket/s3-bucket.yml   \
+          --parameter-overrides     \
+            BucketName=$(S3_BUCKET_NAME)
+pipeline: s3-bucket
+	aws cloudformation package --template-file pipeline/pipeline-cfn.yml --output-template pipeline/pipeline-cfn-packaged.yml --s3-bucket $(S3_BUCKET_NAME)
 	$(eval STAGING_ENVIRONMENT_DNS := $(shell aws cloudformation list-exports --region $(AWS_REGION) --query "Exports[?Name=='$(INSTANCE_STAGING_STACK_NAME)::InstancePrivateDns'].Value" --output text))
 	$(eval PRODUCTION_ENVIRONMENT_DNS := $(shell aws cloudformation list-exports --region $(AWS_REGION) --query "Exports[?Name=='$(INSTANCE_PRODUCTION_STACK_NAME)::InstancePrivateDns'].Value" --output text))
 	aws cloudformation deploy    \
@@ -28,6 +38,7 @@ pipeline:
       --capabilities CAPABILITY_NAMED_IAM   \
       --parameter-overrides     \
         ApplicationName=$(APPLICATION_NAME)   \
+        S3Bucket=$(S3_BUCKET_NAME) \
         GithubRepo=$(GITHUB_REPO)   \
         GithubRepoBranch=$(GITHUB_REPO_BRANCH) \
         NetworkStagingStackName=$(NETWORK_STAGING_STACK_NAME) \
@@ -55,8 +66,11 @@ network-production: ssh-key-pair
 
 delete-all:
 	- $(MAKE) -j2 delete-pipeline delete-ami
+	- $(MAKE) delete-s3-bucket
 	- $(MAKE) -j2 delete-instance-staging delete-instance-production
 	- $(MAKE) -j2 delete-network-staging delete-network-production
+delete-s3-bucket:
+	./stack-deletion/delete-stack-wait-termination.sh $(S3_BUCKET_STACK_NAME)
 delete-all-except-ami:
 	- $(MAKE) delete-pipeline
 	- $(MAKE) -j2 delete-instance-staging delete-instance-production

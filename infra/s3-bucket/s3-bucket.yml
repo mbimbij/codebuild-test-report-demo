@@ -1,0 +1,13 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: S3 Bucket used for CloudFormation nested stack and pipeline resources
+Parameters:
+  BucketName:
+    Type: String
+    Description: Bucket Name
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Description: S3 bucket for pipeline artifacts
+    Properties:
+      BucketName: !Ref BucketName
+#      BucketName: !Sub '${AWS::Region}-${AWS::AccountId}-${ApplicationName}-bucket-pipeline'
