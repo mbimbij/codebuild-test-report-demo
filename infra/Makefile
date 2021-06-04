@@ -1,17 +1,20 @@
-SHELL := /bin/bash
 ifndef APPLICATION_NAME
 $(error APPLICATION_NAME is not set)
 endif
 include infra.env
+
+SHELL := /bin/bash
+
+S3_BUCKET_NAME=$(AWS_REGION)-$(AWS_ACCOUNT_ID)-$(APPLICATION_NAME)-bucket
+S3_BUCKET_STACK_NAME=$(APPLICATION_NAME)-bucket
 PIPELINE_STACK_NAME=$(APPLICATION_NAME)-pipeline
 INSTANCE_STAGING_STACK_NAME=$(APPLICATION_NAME)-instance-staging
 INSTANCE_PRODUCTION_STACK_NAME=$(APPLICATION_NAME)-instance-production
 NETWORK_STAGING_STACK_NAME=$(APPLICATION_NAME)-network-staging
 NETWORK_PRODUCTION_STACK_NAME=$(APPLICATION_NAME)-network-production
+
 AWS_REGION := $(shell aws configure get region)
 AWS_ACCOUNT_ID := $(shell aws sts get-caller-identity --query "Account" --output text)
-S3_BUCKET_NAME=$(AWS_REGION)-$(AWS_ACCOUNT_ID)-$(APPLICATION_NAME)-bucket
-S3_BUCKET_STACK_NAME=$(APPLICATION_NAME)-bucket
 
 .PHONY: pipeline ami ssh-key-pair s3-bucket
 
