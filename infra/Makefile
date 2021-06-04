@@ -16,6 +16,8 @@ NETWORK_PRODUCTION_STACK_NAME=$(APPLICATION_NAME)-network-production
 AWS_REGION := $(shell aws configure get region)
 AWS_ACCOUNT_ID := $(shell aws sts get-caller-identity --query "Account" --output text)
 
+GITHUB_REPO_BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
+
 .PHONY: pipeline ami ssh-key-pair s3-bucket
 
 .IGNORE: ami
